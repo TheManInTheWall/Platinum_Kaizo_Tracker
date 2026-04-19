@@ -113,7 +113,23 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .tt-val{width:30px;text-align:right;font-weight:600;color:#e05555;flex-shrink:0}
 .tt-avg{width:36px;text-align:right;color:#777;flex-shrink:0;font-size:10px}
 
-/* ── no attempt message ── */
+/* ── heatmap ── */
+.hm-table{border-collapse:collapse;font-size:9px;white-space:nowrap}
+.hm-table th{padding:2px 5px;color:#555;font-weight:400;text-align:right;position:sticky;left:0;background:#161616;z-index:1;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.hm-table td{width:18px;height:18px;text-align:center;border:1px solid #1a1a1a;font-size:8px;font-weight:600;cursor:default}
+.hm-table thead th{text-align:center;position:sticky;top:0;left:auto;background:#161616;z-index:2;padding:3px 2px;color:#666}
+.hm-table thead th.corner{position:sticky;left:0;z-index:3}
+.hm-cell-0{background:#1a1a1a;color:#333}
+
+/* ── consistency / pb tables ── */
+.data-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+.data-table th{text-align:left;padding:5px 8px;color:#555;font-weight:500;border-bottom:1px solid #222;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.data-table td{padding:5px 8px;border-bottom:1px solid #1a1a1a;color:#bbb}
+.data-table tr:hover td{background:#181818}
+.data-table .split-cell{font-size:9px;padding:1px 6px;border-radius:3px}
+.bar-cell{position:relative;min-width:80px}
+.bar-fill{height:10px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:5px}
+
 .no-att{color:#444;font-size:12px;text-align:center;padding:20px 0}
 
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
@@ -141,6 +157,8 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-stacked" onclick="setPage('stacked')">Deaths per trainer</div>
   <div class="navtab" id="tab-avg" onclick="setPage('avg')">Average deaths</div>
   <div class="navtab" id="tab-pace" onclick="setPage('pace')">Pace</div>
+  <div class="navtab" id="tab-heatmap" onclick="setPage('heatmap')">Heatmap</div>
+  <div class="navtab" id="tab-timeline" onclick="setPage('timeline')">Timeline</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
 
@@ -242,6 +260,33 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
             <div class="a-chart-inner" id="paceInner">
               <canvas id="paceChart"></canvas>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Heatmap ── -->
+<div class="page" id="page-heatmap" style="flex-direction:column">
+  <div class="analytics-page" style="flex:1;display:flex">
+    <div class="a-title">Death heatmap — each cell is deaths at that trainer in that attempt</div>
+    <div class="a-row" style="overflow:auto">
+      <div id="heatmapWrap" style="overflow:auto;flex:1"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Timeline ── -->
+<div class="page" id="page-timeline" style="flex-direction:column">
+  <div class="analytics-page" style="flex:1;display:flex">
+    <div class="a-title">Run timeline — how far each attempt got, coloured by which split it ended in</div>
+    <div class="a-row">
+      <div class="a-panel grow">
+        <div class="a-panel-head">Each bar = one attempt. Length = trainer reached. Later attempts further right = improvement.</div>
+        <div class="a-panel-body" style="overflow-y:auto">
+          <div style="position:relative;width:100%;height:100%">
+            <canvas id="timelineChart"></canvas>
           </div>
         </div>
       </div>
@@ -715,7 +760,7 @@ function importData(){
 // PAGE SWITCHING
 // ─────────────────────────────────────────────────────────────────
 let currentPage='tracker';
-let stackedChartInst=null, avgChartInst=null, paceChartInst=null;
+let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null;
 
 function setPage(p){
   currentPage=p;
@@ -726,6 +771,8 @@ function setPage(p){
   if(p==='stacked') renderStackedChart();
   else if(p==='avg') renderAvgChart();
   else if(p==='pace') renderPaceChart();
+  else if(p==='heatmap') renderHeatmap();
+  else if(p==='timeline') renderTimeline();
   else if(p==='insights') renderInsights();
 }
 
@@ -1175,8 +1222,213 @@ function renderInsights(){
   </div>
 </div>
 `;
+
+  // ── Split summary ──────────────────────────────────────
+  const splitOrder=Object.keys(SPLITS_CFG);
+  const splitSummary=splitOrder.map(name=>{
+    const splitTrainers=TRAINERS.map((_,i)=>i).filter(i=>TRAINERS[i].s===name);
+    if(!splitTrainers.length) return null;
+    const lastIdx=splitTrainers[splitTrainers.length-1];
+    let reached=0, cleared=0, deaths=0;
+    state.attempts.forEach(a=>{
+      const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+      if(endIdx>=splitTrainers[0]){ reached++; deaths+=splitTrainers.reduce((s,i)=>s+(i<=endIdx?a.deaths[i]:0),0); }
+      if(endIdx>=lastIdx) cleared++;
+    });
+    const clearRate=reached>0?Math.round(cleared/reached*100):0;
+    return {name, reached, cleared, clearRate, deaths};
+  }).filter(Boolean);
+
+  // ── Consistency per trainer ─────────────────────────────
+  const consistency=stats.filter(x=>x.reached>=2).map(x=>{
+    const diedCount=state.attempts.filter(a=>{
+      const end=a.ended?a.endedAtIndex-1:a.currentIndex;
+      return x.i<=end && a.deaths[x.i]>0;
+    }).length;
+    return {...x, cleanPct:Math.round((x.reached-diedCount)/x.reached*100)};
+  }).sort((a,b)=>a.cleanPct-b.cleanPct).slice(0,20);
+
+  // ── Personal bests per split ────────────────────────────
+  const pbRows=splitOrder.map(name=>{
+    const splitTrainers=TRAINERS.map((_,i)=>i).filter(i=>TRAINERS[i].s===name);
+    if(!splitTrainers.length) return null;
+    const lastIdx=splitTrainers[splitTrainers.length-1];
+    let pb=Infinity, pbAtt='—';
+    state.attempts.forEach(a=>{
+      const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+      if(endIdx>=lastIdx){
+        const d=splitTrainers.reduce((s,i)=>s+a.deaths[i],0);
+        if(d<pb){ pb=d; pbAtt=a.label; }
+      }
+    });
+    return pb===Infinity?null:{name, pb, pbAtt};
+  }).filter(Boolean);
+
+  el.innerHTML+=`
+<div class="a-title" style="margin-top:24px">Split summary</div>
+<table class="data-table">
+  <thead><tr><th>Split</th><th>Attempts reached</th><th>Cleared</th><th>Clear rate</th><th>Total deaths</th></tr></thead>
+  <tbody>
+  ${splitSummary.map(r=>{
+    const cfg=SPLITS_CFG[r.name]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+    return `<tr>
+      <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${r.name}</span></td>
+      <td>${r.reached}</td>
+      <td>${r.cleared}</td>
+      <td class="bar-cell"><span class="bar-fill" style="width:${r.clearRate}px;background:${cfg.color}88"></span>${r.clearRate}%</td>
+      <td>${r.deaths}</td>
+    </tr>`;
+  }).join('')}
+  </tbody>
+</table>
+
+<div style="display:flex;gap:16px;margin-top:24px;flex-wrap:wrap">
+  <div style="flex:1;min-width:260px">
+    <div class="a-title">Least consistent trainers (≥2 reaches)</div>
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Trainer</th><th>Split</th><th>Clean %</th><th>Reached</th></tr></thead>
+      <tbody>
+      ${consistency.map((x,i)=>{
+        const cfg=SPLITS_CFG[x.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+        const col=x.cleanPct<50?'#e05555':x.cleanPct<80?'#edc948':'#59a14f';
+        return `<tr>
+          <td style="color:#444">${i+1}</td>
+          <td>${x.n}</td>
+          <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${x.s}</span></td>
+          <td style="color:${col};font-weight:600">${x.cleanPct}%</td>
+          <td style="color:#666">${x.reached}×</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div style="flex:1;min-width:220px">
+    <div class="a-title">Personal bests by split (deaths in split)</div>
+    <table class="data-table">
+      <thead><tr><th>Split</th><th>Fewest deaths</th><th>Attempt</th></tr></thead>
+      <tbody>
+      ${pbRows.map(r=>{
+        const cfg=SPLITS_CFG[r.name]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+        return `<tr>
+          <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${r.name}</span></td>
+          <td style="color:#7fd97f;font-weight:600">${r.pb}</td>
+          <td style="color:#666">${r.pbAtt}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>
+`;
 }
 
+// ─────────────────────────────────────────────────────────────────
+// HEATMAP
+// ─────────────────────────────────────────────────────────────────
+function renderHeatmap(){
+  const wrap=document.getElementById('heatmapWrap');
+  if(!state.attempts.length){ wrap.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No data yet.</div>'; return; }
+
+  const attempts=state.attempts;
+  const rows=TRAINERS.map((_,i)=>i).filter(i=>attempts.some(a=>{
+    const end=a.ended?a.endedAtIndex-1:a.currentIndex; return i<=end;
+  }));
+
+  const allVals=[];
+  rows.forEach(i=>attempts.forEach(a=>{ if(a.deaths[i]>0) allVals.push(a.deaths[i]); }));
+  const maxVal=Math.max(...allVals,1);
+
+  function cellColor(d){
+    if(d===0) return null;
+    const ratio=Math.min(d/maxVal,1);
+    let r,g,b;
+    if(ratio<0.5){ const t=ratio*2; r=Math.round(30+186*t); g=Math.round(161-76*t); b=Math.round(167-167*t); }
+    else { const t=(ratio-0.5)*2; r=Math.round(216+39*t); g=Math.round(85-85*t); b=0; }
+    return `rgb(${r},${g},${b})`;
+  }
+
+  const header=`<tr><th class="corner" style="font-size:9px;color:#444">trainer</th>${attempts.map(a=>`<th title="${a.label}" style="writing-mode:vertical-rl;transform:rotate(180deg);max-height:80px;overflow:hidden;text-overflow:ellipsis">${a.label}</th>`).join('')}</tr>`;
+
+  const bodyRows=rows.map(i=>{
+    const t=TRAINERS[i];
+    const cfg=SPLITS_CFG[t.s]||{color:'#666'};
+    const cells=attempts.map(a=>{
+      const end=a.ended?a.endedAtIndex-1:a.currentIndex;
+      if(i>end) return `<td style="background:#111;border-color:#161616"></td>`;
+      const d=a.deaths[i];
+      const bg=cellColor(d);
+      const fg=d===0?'#333':(d/maxVal>0.5?'#fff':'#111');
+      return bg
+        ? `<td style="background:${bg};color:${fg}" title="${t.n} / ${a.label}: ${d} deaths">${d}</td>`
+        : `<td class="hm-cell-0" title="${t.n} / ${a.label}: 0 deaths"></td>`;
+    }).join('');
+    return `<tr><th style="color:${cfg.color};padding-right:8px" title="${t.n}">${t.n.substring(0,22)}</th>${cells}</tr>`;
+  }).join('');
+
+  wrap.innerHTML=`<table class="hm-table"><thead>${header}</thead><tbody>${bodyRows}</tbody></table>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TIMELINE
+// ─────────────────────────────────────────────────────────────────
+function renderTimeline(){
+  if(timelineChartInst){ timelineChartInst.destroy(); timelineChartInst=null; }
+  const canvas=document.getElementById('timelineChart');
+  if(!state.attempts.length){ canvas.style.display='none'; return; }
+  canvas.style.display='';
+
+  const reaches=state.attempts.map(a=>a.ended?a.endedAtIndex-1:a.currentIndex);
+  const colors=state.attempts.map(a=>{
+    const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+    return (SPLITS_CFG[TRAINERS[endIdx]?.s||'']||{color:'#4e79a7'}).color;
+  });
+
+  const h=Math.max(300, state.attempts.length*32+60);
+  canvas.parentElement.style.height=h+'px';
+
+  timelineChartInst=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:state.attempts.map(a=>a.label),
+      datasets:[{
+        data:reaches.map(r=>r+1),
+        backgroundColor:colors.map(c=>c+'bb'),
+        borderColor:colors,
+        borderWidth:1,
+        borderRadius:3,
+      }]
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:false,
+      scales:{
+        x:{
+          beginAtZero:true, max:TRAINERS.length,
+          ticks:{color:'#666',font:{size:10},stepSize:Math.ceil(TRAINERS.length/10)},
+          grid:{color:'rgba(255,255,255,0.04)'},
+          title:{display:true,text:'trainer #',color:'#555',font:{size:10}},
+        },
+        y:{ticks:{color:'#888',font:{size:11}},grid:{display:false}}
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'rgba(14,14,14,0.96)',titleColor:'#eee',bodyColor:'#bbb',
+          borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+          callbacks:{
+            title:items=>`${state.attempts[items[0].dataIndex].label}`,
+            label:item=>{
+              const a=state.attempts[item.dataIndex];
+              const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+              const t=TRAINERS[endIdx];
+              const total=a.deaths.reduce((s,x)=>s+x,0);
+              return [` Reached: ${t?.n||'?'} [${t?.s||'?'}]`,` Total deaths: ${total}`];
+            }
+          }
+        }
+      }
+    }
+  });
+}
 
 document.addEventListener('keydown', e=>{
   if(document.getElementById('modalBg').style.display!=='none') return;
