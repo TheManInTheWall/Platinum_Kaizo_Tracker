@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────
 const TRAINERS = [
 // ── Roark ──────────────────────────────────────────────
+{n:"Before First Battle",s:"Roark"},
 {n:"Youngster Tristan",s:"Roark"},
 {n:"Lass Natalie",s:"Roark"},
 {n:"Bug Catcher Logan",s:"Roark"},
