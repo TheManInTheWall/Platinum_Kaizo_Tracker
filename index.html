@@ -140,6 +140,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab active" id="tab-tracker" onclick="setPage('tracker')">Tracker</div>
   <div class="navtab" id="tab-stacked" onclick="setPage('stacked')">Deaths per trainer</div>
   <div class="navtab" id="tab-avg" onclick="setPage('avg')">Average deaths</div>
+  <div class="navtab" id="tab-pace" onclick="setPage('pace')">Pace</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
 
@@ -221,6 +222,25 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
           <div class="a-scroll">
             <div class="a-chart-inner" id="avgInner">
               <canvas id="avgChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pace ── -->
+<div class="page" id="page-pace" style="flex-direction:column">
+  <div class="analytics-page" style="flex:1;display:flex">
+    <div class="a-title">Pace — deaths above the all-time best at each trainer. Zero = you are on world record pace at that point.</div>
+    <div class="a-row">
+      <div class="a-panel grow">
+        <div class="a-panel-head">Lower = closer to best pace. A flat line means you're dying at exactly the same rate as your best run.</div>
+        <div class="a-panel-body">
+          <div class="a-scroll">
+            <div class="a-chart-inner" id="paceInner">
+              <canvas id="paceChart"></canvas>
             </div>
           </div>
         </div>
@@ -695,7 +715,7 @@ function importData(){
 // PAGE SWITCHING
 // ─────────────────────────────────────────────────────────────────
 let currentPage='tracker';
-let stackedChartInst=null, avgChartInst=null;
+let stackedChartInst=null, avgChartInst=null, paceChartInst=null;
 
 function setPage(p){
   currentPage=p;
@@ -705,6 +725,7 @@ function setPage(p){
   document.getElementById('tab-'+p).classList.add('active');
   if(p==='stacked') renderStackedChart();
   else if(p==='avg') renderAvgChart();
+  else if(p==='pace') renderPaceChart();
   else if(p==='insights') renderInsights();
 }
 
@@ -914,6 +935,137 @@ function renderAvgChart(){
               if(item.datasetIndex===0) return ` Avg deaths: ${item.raw}`;
               return ` Times reached: ${item.raw}`;
             }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PACE CHART
+// ─────────────────────────────────────────────────────────────────
+function renderPaceChart(){
+  if(paceChartInst){ paceChartInst.destroy(); paceChartInst=null; }
+  const inner=document.getElementById('paceInner');
+  if(!state.attempts.length){ inner.innerHTML='<div style="color:#444;padding:20px;font-size:12px">No data yet.</div>'; return; }
+
+  // For each trainer index, find the minimum cumulative deaths across all attempts that reached it
+  const minCum=TRAINERS.map((_,i)=>{
+    let min=Infinity;
+    state.attempts.forEach(a=>{
+      const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
+      if(i<=endIdx) min=Math.min(min, cumDeaths(a,i));
+    });
+    return min===Infinity ? null : min;
+  });
+
+  // Only include trainer indices where at least one attempt reached them
+  const reachedIndices=minCum.map((v,i)=>v!==null?i:null).filter(v=>v!==null);
+  if(!reachedIndices.length){ inner.innerHTML='<div style="color:#444;padding:20px;font-size:12px">No data yet.</div>'; return; }
+
+  const labels=reachedIndices.map(i=>`${i+1}. ${TRAINERS[i].n}`);
+  const splits=reachedIndices.map(i=>TRAINERS[i].s);
+
+  const datasets=state.attempts.map((a,ai)=>{
+    const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
+    const col=ATT_COLORS[ai%ATT_COLORS.length];
+    return {
+      label:a.label,
+      data:reachedIndices.map(i=>{
+        if(i>endIdx) return null;
+        return cumDeaths(a,i) - minCum[i];
+      }),
+      borderColor:col,
+      backgroundColor:col,
+      borderWidth: a.id===state.activeId ? 2.5 : 1.5,
+      pointRadius:1.5,
+      pointHoverRadius:5,
+      tension:0.1,
+      spanGaps:false,
+    };
+  });
+
+  // Split background bands mapped to compressed x axis
+  const bgPluginPace={
+    id:'splitBgPace',
+    beforeDraw(chart){
+      const {ctx,chartArea,scales}=chart;
+      if(!chartArea) return;
+      const xs=scales.x;
+      const step=xs.getPixelForValue(1)-xs.getPixelForValue(0);
+      const half=step/2;
+      ctx.save();
+      let cur=null,start=0;
+      const drawBand=(s,from,to)=>{
+        const cfg=SPLITS_CFG[s]||{bg:'rgba(128,128,128,0.08)',color:'#888'};
+        const x0=xs.getPixelForValue(from)-half, x1=xs.getPixelForValue(to)+half;
+        ctx.fillStyle=cfg.bg;
+        ctx.fillRect(x0,chartArea.top,x1-x0,chartArea.bottom-chartArea.top);
+        ctx.fillStyle=cfg.color; ctx.globalAlpha=0.5;
+        ctx.font='bold 9px system-ui'; ctx.textAlign='center';
+        ctx.fillText(s,x0+(x1-x0)/2,chartArea.top+11);
+        ctx.globalAlpha=1;
+      };
+      splits.forEach((s,i)=>{ if(s!==cur){if(cur)drawBand(cur,start,i-1);cur=s;start=i;} });
+      if(cur) drawBand(cur,start,splits.length-1);
+      ctx.restore();
+    }
+  };
+
+  // Zero line annotation — drawn as a plugin
+  const zeroLinePlugin={
+    id:'zeroline',
+    afterDraw(chart){
+      const {ctx,chartArea,scales}=chart;
+      const y=scales.y.getPixelForValue(0);
+      ctx.save();
+      ctx.strokeStyle='rgba(255,255,255,0.15)';
+      ctx.lineWidth=1;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left,y);
+      ctx.lineTo(chartArea.right,y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  };
+
+  const w=Math.max(900, reachedIndices.length*18);
+  inner.style.width=w+'px';
+
+  paceChartInst=new Chart(document.getElementById('paceChart'),{
+    type:'line',
+    data:{labels, datasets},
+    plugins:[bgPluginPace, zeroLinePlugin],
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      scales:{
+        x:{
+          ticks:{maxRotation:90,minRotation:60,font:{size:8},color:'#555',autoSkip:false},
+          grid:{color:'rgba(255,255,255,0.03)'},
+        },
+        y:{
+          beginAtZero:true,
+          ticks:{color:'#777',font:{size:11},stepSize:1},
+          grid:{color:'rgba(255,255,255,0.05)'},
+          title:{display:true,text:'deaths behind best pace',color:'#555',font:{size:10}},
+        }
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index', intersect:false,
+          backgroundColor:'rgba(14,14,14,0.96)',titleColor:'#eee',bodyColor:'#bbb',
+          borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+          filter:item=>item.raw!==null,
+          callbacks:{
+            title:items=>{
+              const ri=reachedIndices[items[0].dataIndex];
+              return `${TRAINERS[ri].n}  [${TRAINERS[ri].s}]  —  best here: ${minCum[ri]} deaths`;
+            },
+            label:item=>` ${item.dataset.label}: +${item.raw} behind`,
           }
         }
       }
