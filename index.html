@@ -190,6 +190,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <h2>Stats</h2>
       <div class="stat-row"><span class="sl">Trainers fought</span><span class="sv" id="statFought">—</span></div>
       <div class="stat-row"><span class="sl">Deaths this run</span><span class="sv" id="statDeaths">—</span></div>
+      <div class="stat-row"><span class="sl">Pace delta</span><span class="sv" id="statPace">—</span></div>
       <div class="stat-row"><span class="sl">Remaining</span><span class="sv" id="statRemaining">—</span></div>
       <div class="stat-row"><span class="sl">Total attempts</span><span class="sv" id="statAttempts">—</span></div>
       <div class="stat-row"><span class="sl">All-time deaths</span><span class="sv" id="statAllDeaths">—</span></div>
@@ -616,12 +617,33 @@ function renderStats(){
   const allDeaths=state.attempts.reduce((s,att)=>s+att.deaths.reduce((x,y)=>x+y,0),0);
   document.getElementById('statAllDeaths').textContent=allDeaths;
   if(a){
-    document.getElementById('statFought').textContent=a.currentIndex+1;
-    document.getElementById('statDeaths').textContent=cumDeaths(a,a.currentIndex);
-    document.getElementById('statRemaining').textContent=TRAINERS.length-a.currentIndex-1;
+    const ci=a.currentIndex;
+    const myCum=cumDeaths(a,ci);
+    // Best cumulative deaths at this trainer across all OTHER attempts that reached it
+    let bestCum=Infinity;
+    state.attempts.forEach(att=>{
+      if(att.id===a.id) return;
+      const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
+      if(ci<=endIdx) bestCum=Math.min(bestCum, cumDeaths(att,ci));
+    });
+    const paceEl=document.getElementById('statPace');
+    if(bestCum===Infinity){
+      paceEl.textContent='only run';
+      paceEl.style.color='';
+    } else {
+      const delta=myCum-bestCum;
+      if(delta===0){ paceEl.textContent='on best pace'; paceEl.style.color='#7fd97f'; }
+      else if(delta>0){ paceEl.textContent=`+${delta} behind`; paceEl.style.color=delta>5?'#e05555':'#edc948'; }
+      else { paceEl.textContent=`${delta} ahead`; paceEl.style.color='#7fd97f'; }
+    }
+    document.getElementById('statFought').textContent=ci+1;
+    document.getElementById('statDeaths').textContent=myCum;
+    document.getElementById('statRemaining').textContent=TRAINERS.length-ci-1;
   } else {
     document.getElementById('statFought').textContent='—';
     document.getElementById('statDeaths').textContent='—';
+    document.getElementById('statPace').textContent='—';
+    document.getElementById('statPace').style.color='';
     document.getElementById('statRemaining').textContent='—';
   }
 }
