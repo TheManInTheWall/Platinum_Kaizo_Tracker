@@ -307,7 +307,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="a-title">Progress over attempts — how far each run got</div>
     <div class="a-row">
       <div class="a-panel grow">
-        <div class="a-panel-head">Trainer index reached per attempt. Rising = improvement. Also shows total deaths per attempt on second axis.</div>
+        <div class="a-panel-head">Bars = trainer reached per attempt, coloured by ending split. Red line = deaths per trainer fought (efficiency — lower is better, independent of how far you got).</div>
         <div class="a-panel-body">
           <div style="position:relative;width:100%;height:100%">
             <canvas id="progressChart"></canvas>
@@ -1390,7 +1390,12 @@ function renderProgress(){
 
   const labels=state.attempts.map((_,i)=>`#${i+1}`);
   const reaches=state.attempts.map(a=>(a.ended?a.endedAtIndex-1:a.currentIndex)+1);
-  const deaths=state.attempts.map(a=>a.deaths.reduce((s,x)=>s+x,0));
+  const efficiency=state.attempts.map(a=>{
+    const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+    const fought=endIdx+1;
+    const deaths=a.deaths.slice(0,fought).reduce((s,x)=>s+x,0);
+    return fought>0 ? Math.round(deaths/fought*100)/100 : 0;
+  });
 
   // colours per attempt bar — split colour of where it ended
   const barColors=state.attempts.map(a=>{
@@ -1433,8 +1438,8 @@ function renderProgress(){
           order:1,
         },
         {
-          label:'Total deaths',
-          data:deaths,
+          label:'Deaths per trainer',
+          data:efficiency,
           type:'line',
           borderColor:'#e05555aa',
           backgroundColor:'transparent',
@@ -1461,7 +1466,7 @@ function renderProgress(){
           position:'right', beginAtZero:true,
           ticks:{color:'#7a3333',font:{size:10}},
           grid:{display:false},
-          title:{display:true,text:'total deaths',color:'#7a3333',font:{size:10}},
+          title:{display:true,text:'deaths per trainer',color:'#7a3333',font:{size:10}},
         }
       },
       plugins:{
@@ -1478,7 +1483,7 @@ function renderProgress(){
                 return ` Reached: ${TRAINERS[endIdx]?.n||'?'} [${TRAINERS[endIdx]?.s||'?'}]`;
               }
               if(item.datasetIndex===1) return ` PB at this point: ${item.raw}`;
-              return ` Total deaths: ${item.raw}`;
+              return ` Deaths per trainer: ${item.raw}`;
             }
           }
         }
