@@ -48,7 +48,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .sl{color:#777}
 .sv{color:#ccc;font-weight:500}
 .trainer-scroll{flex:1;overflow-y:auto}
-.ti{padding:5px 14px;font-size:10.5px;display:flex;align-items:center;gap:7px;border-left:3px solid transparent;cursor:default}
+.ti{padding:5px 14px;font-size:10.5px;display:flex;align-items:center;gap:7px;border-left:3px solid transparent;cursor:pointer}
 .ti:hover{background:#181818}
 .ti.cur{background:#0e2040;border-left-color:#3a6ea5}
 .ti.done{color:#888}
@@ -159,6 +159,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-pace" onclick="setPage('pace')">Pace</div>
   <div class="navtab" id="tab-heatmap" onclick="setPage('heatmap')">Heatmap</div>
   <div class="navtab" id="tab-timeline" onclick="setPage('timeline')">Timeline</div>
+  <div class="navtab" id="tab-progress" onclick="setPage('progress')">Progress</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
 
@@ -182,6 +183,11 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
           <button class="btn r" onclick="addDeath()">+ Record death</button>
           <button class="btn g" onclick="nextTrainer()">Next trainer →</button>
           <button class="btn" id="endResumeBtn" onclick="toggleEndRun()" style="border-color:#6e3a3a;color:#cc6666">End run here</button>
+        </div>
+        <div style="margin-top:8px;font-size:9px;color:#3a3a3a;line-height:1.8">
+          <kbd style="background:#1e1e1e;border:1px solid #2e2e2e;border-radius:3px;padding:1px 4px">D</kbd> death &nbsp;
+          <kbd style="background:#1e1e1e;border:1px solid #2e2e2e;border-radius:3px;padding:1px 4px">→</kbd> next &nbsp;
+          <kbd style="background:#1e1e1e;border:1px solid #2e2e2e;border-radius:3px;padding:1px 4px">⌘Z</kbd> undo
         </div>
       </div>
     </div>
@@ -288,6 +294,23 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
         <div class="a-panel-body" style="overflow-y:auto">
           <div style="position:relative;width:100%;height:100%">
             <canvas id="timelineChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Progress ── -->
+<div class="page" id="page-progress" style="flex-direction:column">
+  <div class="analytics-page" style="flex:1;display:flex">
+    <div class="a-title">Progress over attempts — how far each run got</div>
+    <div class="a-row">
+      <div class="a-panel grow">
+        <div class="a-panel-head">Trainer index reached per attempt. Rising = improvement. Also shows total deaths per attempt on second axis.</div>
+        <div class="a-panel-body">
+          <div style="position:relative;width:100%;height:100%">
+            <canvas id="progressChart"></canvas>
           </div>
         </div>
       </div>
@@ -634,7 +657,7 @@ function renderStats(){
       const delta=myCum-bestCum;
       if(delta===0){ paceEl.textContent='on best pace'; paceEl.style.color='#7fd97f'; }
       else if(delta>0){ paceEl.textContent=`+${delta} behind`; paceEl.style.color=delta>5?'#e05555':'#edc948'; }
-      else { paceEl.textContent=`${delta} ahead`; paceEl.style.color='#7fd97f'; }
+      else { paceEl.textContent=`${Math.abs(delta)} ahead`; paceEl.style.color='#7fd97f'; }
     }
     document.getElementById('statFought').textContent=ci+1;
     document.getElementById('statDeaths').textContent=myCum;
@@ -646,6 +669,13 @@ function renderStats(){
     document.getElementById('statPace').style.color='';
     document.getElementById('statRemaining').textContent='—';
   }
+}
+
+function jumpToTrainer(i){
+  const a=getActive(); if(!a) return;
+  if(!confirm(`Jump to trainer #${i+1}: "${TRAINERS[i].n}"?\n\nDeaths between current position and here are preserved.`)) return;
+  a.currentIndex=i;
+  saveState(); render(); scrollToCurrent();
 }
 
 function renderTrainerList(){
@@ -660,7 +690,7 @@ function renderTrainerList(){
     } else cls+=' todo';
     const cfg=SPLITS_CFG[t.s]||{color:'#666'};
     const d=a?a.deaths[i]:0;
-    return `<div class="${cls}" id="ti-${i}">
+    return `<div class="${cls}" id="ti-${i}" onclick="jumpToTrainer(${i})" title="Jump to ${t.n}">
       <span class="ti-dot" style="background:${cfg.color}"></span>
       <span class="ti-name">${t.n}</span>
       <span class="ti-d ${d>0?'has':'nil'}">${d>0?d:'—'}</span>
@@ -782,7 +812,7 @@ function importData(){
 // PAGE SWITCHING
 // ─────────────────────────────────────────────────────────────────
 let currentPage='tracker';
-let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null;
+let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null, progressChartInst=null;
 
 function setPage(p){
   currentPage=p;
@@ -795,6 +825,7 @@ function setPage(p){
   else if(p==='pace') renderPaceChart();
   else if(p==='heatmap') renderHeatmap();
   else if(p==='timeline') renderTimeline();
+  else if(p==='progress') renderProgress();
   else if(p==='insights') renderInsights();
 }
 
@@ -1286,62 +1317,174 @@ function renderInsights(){
     return pb===Infinity?null:{name, pb, pbAtt};
   }).filter(Boolean);
 
-  el.innerHTML+=`
-<div class="a-title" style="margin-top:24px">Split summary</div>
-<table class="data-table">
-  <thead><tr><th>Split</th><th>Attempts reached</th><th>Cleared</th><th>Clear rate</th><th>Total deaths</th></tr></thead>
-  <tbody>
-  ${splitSummary.map(r=>{
-    const cfg=SPLITS_CFG[r.name]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
-    return `<tr>
-      <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${r.name}</span></td>
-      <td>${r.reached}</td>
-      <td>${r.cleared}</td>
-      <td class="bar-cell"><span class="bar-fill" style="width:${r.clearRate}px;background:${cfg.color}88"></span>${r.clearRate}%</td>
-      <td>${r.deaths}</td>
-    </tr>`;
-  }).join('')}
-  </tbody>
-</table>
+  // ── Kill trainer (trainer that ended the most runs) ────
+  const killCounts={};
+  state.attempts.forEach(a=>{
+    if(!a.ended) return;
+    const name=TRAINERS[a.endedAtIndex]?.n||'?';
+    const split=TRAINERS[a.endedAtIndex]?.s||'?';
+    const key=`${a.endedAtIndex}`;
+    if(!killCounts[key]) killCounts[key]={name,split,idx:a.endedAtIndex,count:0};
+    killCounts[key].count++;
+  });
+  const killers=Object.values(killCounts).sort((a,b)=>b.count-a.count).slice(0,10);
 
+  // ── Death spikes — trainers whose deaths are significantly above neighbours ──
+  const reached=stats; // already filtered to reached≥1
+  const spikes=reached.filter((x,i)=>{
+    if(i===0||i===reached.length-1) return false;
+    const prev=reached[i-1].avg;
+    const next=reached[i+1].avg;
+    const neighbours=(prev+next)/2;
+    return x.avg>0.3 && x.avg >= neighbours*2.5 && x.avg-neighbours>=0.5;
+  }).sort((a,b)=>b.avg-a.avg).slice(0,10);
+
+  el.innerHTML+=`
 <div style="display:flex;gap:16px;margin-top:24px;flex-wrap:wrap">
-  <div style="flex:1;min-width:260px">
-    <div class="a-title">Least consistent trainers (≥2 reaches)</div>
+  <div style="flex:1;min-width:240px">
+    <div class="a-title">Run killers — trainer that ended the most runs</div>
     <table class="data-table">
-      <thead><tr><th>#</th><th>Trainer</th><th>Split</th><th>Clean %</th><th>Reached</th></tr></thead>
+      <thead><tr><th>#</th><th>Trainer</th><th>Split</th><th>Runs ended</th></tr></thead>
       <tbody>
-      ${consistency.map((x,i)=>{
+      ${killers.length?killers.map((k,i)=>{
+        const cfg=SPLITS_CFG[k.split]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+        return `<tr>
+          <td style="color:#444">${i+1}</td>
+          <td>${k.name}</td>
+          <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${k.split}</span></td>
+          <td style="color:#e05555;font-weight:600">${k.count}</td>
+        </tr>`;
+      }).join(''):'<tr><td colspan="4" style="color:#444">No ended runs yet</td></tr>'}
+      </tbody>
+    </table>
+  </div>
+  <div style="flex:1;min-width:240px">
+    <div class="a-title">Death spikes — dangerous walls relative to neighbours</div>
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Trainer</th><th>Split</th><th>Avg deaths</th></tr></thead>
+      <tbody>
+      ${spikes.length?spikes.map((x,i)=>{
         const cfg=SPLITS_CFG[x.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
-        const col=x.cleanPct<50?'#e05555':x.cleanPct<80?'#edc948':'#59a14f';
         return `<tr>
           <td style="color:#444">${i+1}</td>
           <td>${x.n}</td>
           <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${x.s}</span></td>
-          <td style="color:${col};font-weight:600">${x.cleanPct}%</td>
-          <td style="color:#666">${x.reached}×</td>
+          <td style="color:#edc948;font-weight:600">${x.avg.toFixed(2)}</td>
         </tr>`;
-      }).join('')}
-      </tbody>
-    </table>
-  </div>
-  <div style="flex:1;min-width:220px">
-    <div class="a-title">Personal bests by split (deaths in split)</div>
-    <table class="data-table">
-      <thead><tr><th>Split</th><th>Fewest deaths</th><th>Attempt</th></tr></thead>
-      <tbody>
-      ${pbRows.map(r=>{
-        const cfg=SPLITS_CFG[r.name]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
-        return `<tr>
-          <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${r.name}</span></td>
-          <td style="color:#7fd97f;font-weight:600">${r.pb}</td>
-          <td style="color:#666">${r.pbAtt}</td>
-        </tr>`;
-      }).join('')}
+      }).join(''):'<tr><td colspan="4" style="color:#444">Not enough data yet</td></tr>'}
       </tbody>
     </table>
   </div>
 </div>
 `;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PROGRESS CHART
+// ─────────────────────────────────────────────────────────────────
+function renderProgress(){
+  if(progressChartInst){ progressChartInst.destroy(); progressChartInst=null; }
+  const canvas=document.getElementById('progressChart');
+  if(!state.attempts.length){ canvas.style.display='none'; return; }
+  canvas.style.display='';
+
+  const labels=state.attempts.map((_,i)=>`#${i+1}`);
+  const reaches=state.attempts.map(a=>(a.ended?a.endedAtIndex-1:a.currentIndex)+1);
+  const deaths=state.attempts.map(a=>a.deaths.reduce((s,x)=>s+x,0));
+
+  // colours per attempt bar — split colour of where it ended
+  const barColors=state.attempts.map(a=>{
+    const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+    return (SPLITS_CFG[TRAINERS[endIdx]?.s||'']||{color:'#4e79a7'}).color;
+  });
+
+  // rolling best line
+  const rollingBest=reaches.reduce((acc,v)=>{
+    acc.push(Math.max(v,...(acc.length?[acc[acc.length-1]]:[])));
+    return acc;
+  },[]);
+
+  progressChartInst=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {
+          label:'Trainer reached',
+          data:reaches,
+          backgroundColor:barColors.map(c=>c+'99'),
+          borderColor:barColors,
+          borderWidth:1,
+          borderRadius:3,
+          yAxisID:'y',
+          order:2,
+        },
+        {
+          label:'Personal best',
+          data:rollingBest,
+          type:'line',
+          borderColor:'rgba(255,255,255,0.25)',
+          backgroundColor:'transparent',
+          borderWidth:1.5,
+          borderDash:[4,3],
+          pointRadius:0,
+          tension:0,
+          yAxisID:'y',
+          order:1,
+        },
+        {
+          label:'Total deaths',
+          data:deaths,
+          type:'line',
+          borderColor:'#e05555aa',
+          backgroundColor:'transparent',
+          borderWidth:1.5,
+          pointRadius:2,
+          pointBackgroundColor:'#e05555',
+          tension:0.2,
+          yAxisID:'y2',
+          order:0,
+        },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      scales:{
+        x:{ticks:{color:'#666',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}},
+        y:{
+          beginAtZero:true, max:TRAINERS.length,
+          ticks:{color:'#777',font:{size:10}},
+          grid:{color:'rgba(255,255,255,0.05)'},
+          title:{display:true,text:'trainer reached',color:'#555',font:{size:10}},
+        },
+        y2:{
+          position:'right', beginAtZero:true,
+          ticks:{color:'#7a3333',font:{size:10}},
+          grid:{display:false},
+          title:{display:true,text:'total deaths',color:'#7a3333',font:{size:10}},
+        }
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'rgba(14,14,14,0.96)',titleColor:'#eee',bodyColor:'#bbb',
+          borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+          callbacks:{
+            title:items=>`${state.attempts[items[0].dataIndex].label}`,
+            label:item=>{
+              if(item.datasetIndex===0){
+                const a=state.attempts[item.dataIndex];
+                const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+                return ` Reached: ${TRAINERS[endIdx]?.n||'?'} [${TRAINERS[endIdx]?.s||'?'}]`;
+              }
+              if(item.datasetIndex===1) return ` PB at this point: ${item.raw}`;
+              return ` Total deaths: ${item.raw}`;
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
