@@ -1255,6 +1255,12 @@ function renderInsights(){
           <span class="tt-split" style="background:${cfg.bg};color:${cfg.color}">${x.s}</span>
           <span class="tt-val">${x.total}</span>
           <span class="tt-avg">${x.avg.toFixed(1)} avg</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+  <div style="flex:1;min-width:260px">
+    <div class="a-title">Most dangerous by average (≥2 reaches)</div>
     <div class="top-trainers">
       ${byAvg.slice(0,15).map((x,i)=>{
         const cfg=SPLITS_CFG[x.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
