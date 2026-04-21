@@ -148,6 +148,8 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <button class="btn b" onclick="showNewAttemptModal()">+ New attempt</button>
   <button class="btn" onclick="undoDeath()" id="undoBtn" disabled title="Undo last death recorded">Undo death</button>
   <button class="btn" id="exportBtn" onclick="exportData()">Export save.json</button>
+  <button class="btn b" id="pushBtn" onclick="pushToGitHub()" title="Push save.json to GitHub">Push to GitHub</button>
+  <button class="btn" onclick="showTokenModal()" title="Set GitHub token">⚙ Token</button>
   <button class="btn" onclick="importData()">Import JSON</button>
   <button class="btn b" onclick="importTSV()">Import TSV</button>
 </div>
@@ -325,6 +327,35 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 </div>
 
 
+<!-- token modal -->
+<div class="modal-bg" id="tokenModalBg" style="display:none">
+  <div class="modal" style="width:440px">
+    <h3>GitHub sync settings</h3>
+    <p style="font-size:11px;color:#777;margin-bottom:12px">Token stored only in localStorage. Use a fine-grained token with <strong>Contents: Read and write</strong> on <code>Platinum_Kaizo_Tracker</code> only.</p>
+    <input id="tokenInput" type="password" placeholder="github_pat_…" style="font-family:monospace;margin-bottom:16px" />
+    <div style="font-size:11px;color:#aaa;margin-bottom:8px;font-weight:500">Auto-sync</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="radio" name="syncMode" value="off" id="syncOff"> Off (manual only)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="radio" name="syncMode" value="next" id="syncNext"> Every time I advance to next trainer
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="radio" name="syncMode" value="30" id="sync30"> Every 30 minutes
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="radio" name="syncMode" value="60" id="sync60"> Every 60 minutes
+      </label>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeTokenModal()">Cancel</button>
+      <button class="btn r" onclick="clearToken()">Clear token</button>
+      <button class="btn b" onclick="saveToken()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- modal -->
 <div class="modal-bg" id="modalBg" style="display:none">
   <div class="modal">
@@ -440,7 +471,7 @@ function undoDeath(){
 
 function nextTrainer(){
   const a=getActive(); if(!a) return;
-  if(a.currentIndex<TRAINERS.length-1){ a.currentIndex++; saveState(); render(); scrollToCurrent(); }
+  if(a.currentIndex<TRAINERS.length-1){ a.currentIndex++; saveState(); render(); scrollToCurrent(); maybePushOnNext(); }
 }
 
 function toggleEndRun(){
@@ -720,6 +751,93 @@ function scrollToCurrent(){
 // ─────────────────────────────────────────────────────────────────
 // EXPORT / IMPORT
 // ─────────────────────────────────────────────────────────────────
+const GH_OWNER='themaninthewall';
+const GH_REPO='Platinum_Kaizo_Tracker';
+const GH_FILE='save.json';
+const GH_API=`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
+
+function getToken(){ return localStorage.getItem('gh_token')||''; }
+function getSyncMode(){ return localStorage.getItem('gh_sync_mode')||'off'; }
+
+function showTokenModal(){
+  document.getElementById('tokenInput').value=getToken();
+  const mode=getSyncMode();
+  document.querySelectorAll('input[name="syncMode"]').forEach(r=>{ r.checked=r.value===mode; });
+  document.getElementById('tokenModalBg').style.display='flex';
+  setTimeout(()=>document.getElementById('tokenInput').focus(),50);
+}
+function closeTokenModal(){ document.getElementById('tokenModalBg').style.display='none'; }
+function saveToken(){
+  const t=document.getElementById('tokenInput').value.trim();
+  if(t) localStorage.setItem('gh_token',t); else localStorage.removeItem('gh_token');
+  const mode=document.querySelector('input[name="syncMode"]:checked')?.value||'off';
+  localStorage.setItem('gh_sync_mode',mode);
+  closeTokenModal();
+  updatePushBtn();
+  setupAutoSync();
+}
+function clearToken(){
+  localStorage.removeItem('gh_token');
+  localStorage.setItem('gh_sync_mode','off');
+  closeTokenModal();
+  updatePushBtn();
+  setupAutoSync();
+}
+
+function updatePushBtn(){
+  const btn=document.getElementById('pushBtn');
+  if(!btn) return;
+  const mode=getSyncMode();
+  const hasToken=!!getToken();
+  btn.style.opacity=hasToken?'1':'0.4';
+  const modeLabel=mode==='off'?'':mode==='next'?' (auto)':` (auto ${mode}m)`;
+  btn.title=hasToken?`Push save.json to GitHub${modeLabel}`:'Set a GitHub token first (⚙ Token)';
+}
+
+let _syncTimer=null;
+function setupAutoSync(){
+  if(_syncTimer){ clearInterval(_syncTimer); _syncTimer=null; }
+  const mode=getSyncMode();
+  if(!getToken()||mode==='off'||mode==='next') return;
+  const mins=parseInt(mode,10);
+  if(isNaN(mins)) return;
+  _syncTimer=setInterval(()=>pushToGitHub(true), mins*60*1000);
+}
+
+function maybePushOnNext(){
+  if(getSyncMode()==='next'&&getToken()) pushToGitHub(true);
+}
+
+async function pushToGitHub(silent=false){
+  const token=getToken();
+  if(!token){ if(!silent) showTokenModal(); return; }
+  const btn=document.getElementById('pushBtn');
+  const origText=btn.textContent;
+  btn.textContent='Pushing…'; btn.disabled=true;
+  try{
+    let sha=null;
+    const getRes=await fetch(GH_API,{headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json'}});
+    if(getRes.ok){ const j=await getRes.json(); sha=j.sha; }
+    else if(getRes.status!==404) throw new Error(`GitHub GET failed: ${getRes.status}`);
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(state,null,2))));
+    const body={message:'update save [skip ci]',content};
+    if(sha) body.sha=sha;
+    const putRes=await fetch(GH_API,{
+      method:'PUT',
+      headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    if(!putRes.ok){ const err=await putRes.json(); throw new Error(err.message||putRes.status); }
+    btn.textContent='✓ Pushed!'; btn.style.color='#7fd97f';
+    setTimeout(()=>{ btn.textContent=origText; btn.style.color=''; btn.disabled=false; },3000);
+  }catch(e){
+    btn.textContent='✗ Failed'; btn.style.color='#e05555';
+    setTimeout(()=>{ btn.textContent=origText; btn.style.color=''; btn.disabled=false; },4000);
+    if(!silent) alert(`Push failed: ${e.message}`);
+    console.error('GitHub push error:',e);
+  }
+}
+
 function exportData(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -1615,7 +1733,9 @@ document.addEventListener('keydown', e=>{
 // INIT
 // ─────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async ()=>{
-  loadState(); // load localStorage first so UI isn't blank while fetching
+  loadState();
+  updatePushBtn();
+  setupAutoSync();
   document.getElementById('chartInner').style.width=Math.max(900, TRAINERS.length*6)+'px';
   render(); initChart();
 
