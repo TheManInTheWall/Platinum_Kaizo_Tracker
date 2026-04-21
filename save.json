@@ -6310,7 +6310,7 @@
       "label": "Attempt 16",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 64,
+      "currentIndex": 65,
       "deaths": [
         0,
         0,
@@ -6375,7 +6375,7 @@
         0,
         0,
         0,
-        0,
+        1,
         0,
         0,
         0,
