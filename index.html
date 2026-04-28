@@ -722,20 +722,21 @@ function renderStats(){
         bestAtEl.style.color='#555';
       }
 
-      // "Best ever at" — trainer in current attempt's history where delta was lowest (most negative or least positive)
-      let bestDelta=Infinity, bestEverIdx=-1;
-      for(let j=0;j<=ci;j++){
+      // "Best ever at" — first future trainer where, with 0 deaths, this run is strictly ahead of all others
+      let bestEverTrainer=null;
+      for(let j=ci+1;j<TRAINERS.length;j++){
         const bc=minCumByIdx[j];
-        if(bc===null) continue;
-        const d=cumDeaths(a,j)-bc;
-        if(d<bestDelta){ bestDelta=d; bestEverIdx=j; }
+        if(bc!==null && myCum<bc){ bestEverTrainer=j; break; }
       }
-      if(bestEverIdx>=0){
-        const sign=bestDelta<=0?`${Math.abs(bestDelta)} ahead`:`+${bestDelta}`;
-        bestEverEl.textContent=`#${bestEverIdx+1} ${TRAINERS[bestEverIdx].n} (${sign})`;
-        bestEverEl.style.color=bestDelta<=0?'#7fd97f':'#4e79a7';
+      if(bestEverTrainer!==null){
+        bestEverEl.textContent=`#${bestEverTrainer+1} ${TRAINERS[bestEverTrainer].n}`;
+        bestEverEl.style.color='#4e79a7';
+      } else if(delta<0){
+        bestEverEl.textContent='already best ever';
+        bestEverEl.style.color='#4e79a7';
       } else {
-        bestEverEl.textContent='—';
+        bestEverEl.textContent='not possible';
+        bestEverEl.style.color='#555';
       }
     }
 
