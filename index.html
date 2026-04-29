@@ -398,7 +398,7 @@ function loadState(){
 async function loadFromRepo(){
   // Try to fetch save.json from same directory (works on GitHub Pages)
   try{
-    const res=await fetch('./save.json',{cache:'no-cache'});
+    const res=await fetch(GH_RAW,{cache:'no-cache'});
     if(!res.ok) return false;
     const remote=await res.json();
     if(!remote.attempts) return false;
@@ -806,6 +806,7 @@ function scrollToCurrent(){
 const GH_OWNER='themaninthewall';
 const GH_REPO='Platinum_Kaizo_Tracker';
 const GH_FILE='save.json';
+const GH_RAW=`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/refs/heads/master/${GH_FILE}`;
 const GH_API=`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
 
 function getToken(){ return localStorage.getItem('gh_token')||''; }
