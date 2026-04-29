@@ -395,23 +395,91 @@ function loadState(){
   try{ const s=localStorage.getItem('pk_kaizo_v1'); if(s) applyState(JSON.parse(s)); }catch(e){}
 }
 
-async function loadFromRepo(){
-  // Try to fetch save.json from same directory (works on GitHub Pages)
+async function loadFromRepo(silent=false){
   try{
     const res=await fetch(GH_RAW,{cache:'no-cache'});
     if(!res.ok) return false;
     const remote=await res.json();
     if(!remote.attempts) return false;
+
     const localRaw=localStorage.getItem('pk_kaizo_v1');
     const local=localRaw?JSON.parse(localRaw):null;
-    // Pick whichever has more attempts; if equal, prefer local (more recent edits)
-    if(!local || !local.attempts || remote.attempts.length > local.attempts.length){
+    const hasLocal=local&&local.attempts&&local.attempts.length>0;
+
+    // Check if remote differs from local meaningfully
+    const remoteActive=remote.attempts.find(a=>a.id===remote.activeId);
+    const localActive=local?.attempts?.find(a=>a.id===local?.activeId);
+    const remoteFight=(remoteActive?.currentIndex??-1)+1;
+    const localFight=(localActive?.currentIndex??-1)+1;
+    const remoteAttempts=remote.attempts.length;
+    const localAttempts=local?.attempts?.length??0;
+
+    const isDifferent=remoteAttempts!==localAttempts||
+      remoteActive?.currentIndex!==localActive?.currentIndex||
+      JSON.stringify(remote.attempts.map(a=>a.deaths.reduce((s,x)=>s+x,0)))!==
+      JSON.stringify(local?.attempts?.map(a=>a.deaths.reduce((s,x)=>s+x,0)));
+
+    if(!isDifferent) return false;
+
+    if(!hasLocal){
+      // No local data at all — just load silently
       applyState(remote);
-      localStorage.setItem('pk_kaizo_v1', JSON.stringify(state));
+      localStorage.setItem('pk_kaizo_v1',JSON.stringify(state));
       return true;
     }
-  }catch(e){}
+
+    // Show prompt
+    showRepoLoadPrompt(remote, remoteFight, remoteAttempts, localFight, localAttempts);
+    return false;
+  }catch(e){ console.warn('loadFromRepo failed:',e); }
   return false;
+}
+
+function showRepoLoadPrompt(remote, remoteFight, remoteAttempts, localFight, localAttempts){
+  // Remove any existing prompt
+  document.getElementById('repoPrompt')?.remove();
+
+  const el=document.createElement('div');
+  el.id='repoPrompt';
+  el.style.cssText='position:fixed;bottom:16px;right:16px;background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:14px 16px;z-index:999;font-size:12px;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,.6)';
+  el.innerHTML=`
+    <div style="color:#aaa;margin-bottom:10px;line-height:1.5">
+      <strong style="color:#fff">GitHub save differs from local</strong><br>
+      <span style="color:#666;font-size:10px">Repo:</span> ${remoteAttempts} attempts, fight #${remoteFight}<br>
+      <span style="color:#666;font-size:10px">Local:</span> ${localAttempts} attempts, fight #${localFight}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="applyRepoSave()" style="flex:1;padding:6px;border-radius:5px;border:1px solid #3a6ea5;background:#1a2e4a;color:#8fc6ff;font-size:11px;cursor:pointer">Load from repo</button>
+      <button onclick="document.getElementById('repoPrompt').remove()" style="flex:1;padding:6px;border-radius:5px;border:1px solid #333;background:#1e1e1e;color:#888;font-size:11px;cursor:pointer">Keep local</button>
+    </div>
+  `;
+  document.body.appendChild(el);
+  window._pendingRemote=remote;
+}
+
+function applyRepoSave(){
+  if(!window._pendingRemote) return;
+  applyState(window._pendingRemote);
+  localStorage.setItem('pk_kaizo_v1',JSON.stringify(state));
+  window._pendingRemote=null;
+  document.getElementById('repoPrompt')?.remove();
+  if(chart){chart.destroy();chart=null;}
+  render(); initChart();
+  showToast('Loaded save from repo','#7fd97f');
+}
+
+function showToast(msg, color='#7fd97f'){
+  const t=document.createElement('div');
+  t.style.cssText=`position:fixed;bottom:16px;right:16px;background:#1a1a1a;border:1px solid ${color}44;color:${color};padding:8px 14px;border-radius:6px;font-size:11px;z-index:999`;
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),3000);
+}
+
+let _repoCheckTimer=null;
+function setupRepoCheck(){
+  if(_repoCheckTimer){ clearInterval(_repoCheckTimer); _repoCheckTimer=null; }
+  _repoCheckTimer=setInterval(()=>loadFromRepo(true), 30*60*1000);
 }
 
 function saveState(){
@@ -882,6 +950,7 @@ async function pushToGitHub(silent=false){
     });
     if(!putRes.ok){ const err=await putRes.json(); throw new Error(err.message||putRes.status); }
     btn.textContent='✓ Pushed!'; btn.style.color='#7fd97f';
+    showToast('Pushed to GitHub','#7fd97f');
     setTimeout(()=>{ btn.textContent=origText; btn.style.color=''; btn.disabled=false; },3000);
   }catch(e){
     btn.textContent='✗ Failed'; btn.style.color='#e05555';
@@ -1792,18 +1861,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   document.getElementById('chartInner').style.width=Math.max(900, TRAINERS.length*6)+'px';
   render(); initChart();
 
-  // Then try to pull save.json from the repo — may override if it has more data
-  const loaded=await loadFromRepo();
-  if(loaded){
-    if(chart){chart.destroy();chart=null;}
-    render(); initChart();
-    // Show a brief notice
-    const notice=document.createElement('div');
-    notice.style.cssText='position:fixed;bottom:12px;right:12px;background:#1a3a1a;border:1px solid #3a6e3a;color:#7fd97f;padding:8px 14px;border-radius:6px;font-size:11px;z-index:999';
-    notice.textContent='Loaded save.json from repo';
-    document.body.appendChild(notice);
-    setTimeout(()=>notice.remove(), 3000);
-  }
+  // Check repo for newer save — prompts if different, silent loads if no local data
+  await loadFromRepo();
+  setupRepoCheck();
 });
 </script>
 </body>
