@@ -121,6 +121,15 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .hm-table thead th.corner{position:sticky;left:0;z-index:3}
 .hm-cell-0{background:#1a1a1a;color:#333}
 
+/* ── breakdown picker ── */
+.bd-item{padding:5px 12px;font-size:10.5px;display:flex;align-items:center;gap:7px;cursor:pointer;border-left:3px solid transparent}
+.bd-item:hover{background:#181818}
+.bd-item.selected{background:#0e2040;border-left-color:#3a6ea5}
+.bd-item input[type=checkbox]{accent-color:#3a6ea5;cursor:pointer;flex-shrink:0}
+.bd-split-hdr{padding:4px 12px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#333;background:#0a0a0a;border-bottom:1px solid #1a1a1a}
+.bd-heat{width:22px;height:22px;text-align:center;font-size:8px;font-weight:600;border:1px solid #1a1a1a;vertical-align:middle}
+
+
 /* ── consistency / pb tables ── */
 .data-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
 .data-table th{text-align:left;padding:5px 8px;color:#555;font-weight:500;border-bottom:1px solid #222;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
@@ -162,6 +171,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-heatmap" onclick="setPage('heatmap')">Heatmap</div>
   <div class="navtab" id="tab-timeline" onclick="setPage('timeline')">Timeline</div>
   <div class="navtab" id="tab-progress" onclick="setPage('progress')">Progress</div>
+  <div class="navtab" id="tab-breakdown" onclick="setPage('breakdown')">Trainer breakdown</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
 
@@ -318,6 +328,47 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Trainer breakdown ── -->
+<div class="page" id="page-breakdown" style="flex-direction:row;overflow:hidden">
+  <!-- picker sidebar -->
+  <div style="width:240px;flex-shrink:0;background:#0e0e0e;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:10px 12px;border-bottom:1px solid #1e1e1e;flex-shrink:0">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:6px">Pick trainers</div>
+      <input id="bdSearch" type="text" placeholder="Search…" oninput="renderBdPicker()" style="width:100%;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:4px 8px;color:#ccc;font-size:11px">
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn" style="font-size:10px;padding:3px 7px" onclick="bdSelectAll()">All</button>
+        <button class="btn" style="font-size:10px;padding:3px 7px" onclick="bdClearAll()">Clear</button>
+      </div>
+    </div>
+    <div id="bdPicker" style="flex:1;overflow-y:auto"></div>
+  </div>
+  <!-- table area -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 16px">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:10px;flex-shrink:0">
+      Stats for selected trainers — only attempts that reached each trainer are counted
+    </div>
+    <div style="flex:1;overflow:auto">
+      <table class="data-table" id="bdTable" style="min-width:700px">
+        <thead>
+          <tr>
+            <th>Trainer</th>
+            <th>Split</th>
+            <th title="Average cumulative deaths when arriving at this trainer">Avg deaths up to</th>
+            <th title="Average deaths on this specific trainer">Avg deaths on</th>
+            <th title="Average total deaths in all fights before this trainer">Avg deaths before</th>
+            <th title="Total deaths on this trainer across all attempts">Total deaths on</th>
+            <th>Reached</th>
+            <th style="min-width:120px" colspan="100">Deaths per attempt →</th>
+          </tr>
+        </thead>
+        <tbody id="bdBody">
+          <tr><td colspan="8" style="color:#444;padding:20px">Select trainers from the left to see stats.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -479,7 +530,13 @@ function showToast(msg, color='#7fd97f'){
 let _repoCheckTimer=null;
 function setupRepoCheck(){
   if(_repoCheckTimer){ clearInterval(_repoCheckTimer); _repoCheckTimer=null; }
-  _repoCheckTimer=setInterval(()=>loadFromRepo(true), 30*60*1000);
+  // If a token is set, user is pushing manually/auto — no need to poll
+  if(getToken()) return;
+  _repoCheckTimer=setInterval(async ()=>{
+    console.log('[repo check] checking for updates…');
+    await loadFromRepo();
+  }, 30*60*1000);
+  console.log('[repo check] timer started, next check in 30 minutes');
 }
 
 function saveState(){
@@ -896,6 +953,7 @@ function saveToken(){
   closeTokenModal();
   updatePushBtn();
   setupAutoSync();
+  setupRepoCheck();
 }
 function clearToken(){
   localStorage.removeItem('gh_token');
@@ -903,6 +961,7 @@ function clearToken(){
   closeTokenModal();
   updatePushBtn();
   setupAutoSync();
+  setupRepoCheck();
 }
 
 function updatePushBtn(){
@@ -1066,6 +1125,7 @@ function setPage(p){
   else if(p==='heatmap') renderHeatmap();
   else if(p==='timeline') renderTimeline();
   else if(p==='progress') renderProgress();
+  else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
   else if(p==='insights') renderInsights();
 }
 
@@ -1841,6 +1901,144 @@ function renderTimeline(){
   });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// TRAINER BREAKDOWN
+// ─────────────────────────────────────────────────────────────────
+function getBdSelected(){
+  try{ return new Set(JSON.parse(localStorage.getItem('bd_selected')||'[]')); }catch(e){ return new Set(); }
+}
+function saveBdSelected(set){
+  localStorage.setItem('bd_selected', JSON.stringify([...set]));
+}
+
+function renderBdPicker(){
+  const el=document.getElementById('bdPicker');
+  if(!el) return;
+  const query=(document.getElementById('bdSearch')?.value||'').toLowerCase();
+  const selected=getBdSelected();
+  let html='', lastSplit=null;
+  TRAINERS.forEach((t,i)=>{
+    if(query && !t.n.toLowerCase().includes(query) && !t.s.toLowerCase().includes(query)) return;
+    if(t.s!==lastSplit){
+      const cfg=SPLITS_CFG[t.s]||{color:'#666'};
+      html+=`<div class="bd-split-hdr" style="color:${cfg.color}">${t.s}</div>`;
+      lastSplit=t.s;
+    }
+    const chk=selected.has(i)?'checked':'';
+    const cls=selected.has(i)?'bd-item selected':'bd-item';
+    html+=`<div class="${cls}" onclick="bdToggle(${i})">
+      <input type="checkbox" ${chk} onclick="event.stopPropagation();bdToggle(${i})">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px">${t.n}</span>
+    </div>`;
+  });
+  el.innerHTML=html||'<div style="color:#444;font-size:11px;padding:12px">No matches</div>';
+}
+
+function bdToggle(i){
+  const sel=getBdSelected();
+  if(sel.has(i)) sel.delete(i); else sel.add(i);
+  saveBdSelected(sel);
+  renderBdPicker();
+  renderBdTable();
+}
+function bdSelectAll(){
+  const query=(document.getElementById('bdSearch')?.value||'').toLowerCase();
+  const sel=getBdSelected();
+  TRAINERS.forEach((t,i)=>{
+    if(!query||t.n.toLowerCase().includes(query)||t.s.toLowerCase().includes(query)) sel.add(i);
+  });
+  saveBdSelected(sel); renderBdPicker(); renderBdTable();
+}
+function bdClearAll(){
+  saveBdSelected(new Set()); renderBdPicker(); renderBdTable();
+}
+
+function bdHeatColor(d, maxVal){
+  if(d===0||maxVal===0) return null;
+  const ratio=Math.min(d/maxVal,1);
+  let r,g,b;
+  if(ratio<0.5){ const t=ratio*2; r=Math.round(30+186*t); g=Math.round(161-76*t); b=Math.round(167-167*t); }
+  else { const t=(ratio-0.5)*2; r=Math.round(216+39*t); g=Math.round(85-85*t); b=0; }
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderBdTable(){
+  const body=document.getElementById('bdBody');
+  if(!body) return;
+  const selected=getBdSelected();
+  const indices=[...selected].sort((a,b)=>a-b);
+
+  if(!indices.length){
+    body.innerHTML='<tr><td colspan="20" style="color:#444;padding:20px">Select trainers from the left to see stats.</td></tr>';
+    return;
+  }
+  if(!state.attempts.length){
+    body.innerHTML='<tr><td colspan="20" style="color:#444;padding:20px">No attempts yet.</td></tr>';
+    return;
+  }
+
+  let maxDeaths=1;
+  indices.forEach(i=>state.attempts.forEach(a=>{ if(a.deaths[i]>maxDeaths) maxDeaths=a.deaths[i]; }));
+
+  const rows=indices.map(i=>{
+    const t=TRAINERS[i];
+    const cfg=SPLITS_CFG[t.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+
+    const attData=state.attempts.map(a=>{
+      const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+      if(i>endIdx) return null;
+      return {
+        cumUp: cumDeaths(a,i),
+        on: a.deaths[i],
+        before: cumDeaths(a,i)-a.deaths[i],
+      };
+    });
+    const reached=attData.filter(d=>d!==null);
+    if(!reached.length) return null;
+
+    const avg=(arr)=>arr.length?Math.round(arr.reduce((s,x)=>s+x,0)/arr.length*100)/100:0;
+    const avgCumUp=avg(reached.map(d=>d.cumUp));
+    const avgOn=avg(reached.map(d=>d.on));
+    const avgBefore=avg(reached.map(d=>d.before));
+    const totalOn=reached.reduce((s,d)=>s+d.on,0);
+
+    const heatCells=state.attempts.map((a,ai)=>{
+      const d=attData[ai];
+      if(d===null) return `<td class="bd-heat" style="background:#111;border-color:#161616" title="${a.label}: not reached"></td>`;
+      const bg=bdHeatColor(d.on,maxDeaths);
+      const fg=d.on===0?'#333':(d.on/maxDeaths>0.5?'#fff':'#111');
+      return bg
+        ? `<td class="bd-heat" style="background:${bg};color:${fg}" title="${a.label}: ${d.on} deaths">${d.on}</td>`
+        : `<td class="bd-heat" style="background:#1a1a1a;color:#333" title="${a.label}: 0 deaths"></td>`;
+    }).join('');
+
+    return `<tr>
+      <td style="white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${t.n}">${t.n}</td>
+      <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${t.s}</span></td>
+      <td style="color:#bbb">${avgCumUp}</td>
+      <td style="color:${avgOn>0?'#e05555':'#59a14f'};font-weight:600">${avgOn}</td>
+      <td style="color:#bbb">${avgBefore}</td>
+      <td style="color:#e05555;font-weight:600">${totalOn}</td>
+      <td style="color:#666">${reached.length}×</td>
+      ${heatCells}
+    </tr>`;
+  }).filter(Boolean).join('');
+
+  const attHeaders=state.attempts.map(a=>`<th class="bd-heat" title="${a.label}" style="writing-mode:vertical-rl;transform:rotate(180deg);max-height:70px;overflow:hidden;text-overflow:ellipsis;background:#0e0e0e;position:sticky;top:0;color:#666">${a.label}</th>`).join('');
+
+  document.querySelector('#bdTable thead tr').innerHTML=`
+    <th style="position:sticky;top:0;background:#0e0e0e;min-width:140px">Trainer</th>
+    <th style="position:sticky;top:0;background:#0e0e0e">Split</th>
+    <th style="position:sticky;top:0;background:#0e0e0e" title="Avg cumulative deaths arriving at this trainer">Avg up to</th>
+    <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths on this trainer">Avg on</th>
+    <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths before this trainer">Avg before</th>
+    <th style="position:sticky;top:0;background:#0e0e0e" title="Total deaths on this trainer across all attempts">Total on</th>
+    <th style="position:sticky;top:0;background:#0e0e0e">Reached</th>
+    ${attHeaders}
+  `;
+  body.innerHTML=rows||'<tr><td colspan="20" style="color:#444;padding:12px">None of the selected trainers have been reached yet.</td></tr>';
+}
+
 document.addEventListener('keydown', e=>{
   if(document.getElementById('modalBg').style.display!=='none') return;
   if(e.target.tagName==='INPUT') return;
@@ -1850,9 +2048,6 @@ document.addEventListener('keydown', e=>{
   if(e.key==='n'||e.key==='ArrowRight') nextTrainer();
   if(e.key==='z'&&(e.ctrlKey||e.metaKey)) undoDeath();
 });
-
-// ─────────────────────────────────────────────────────────────────
-// INIT
 // ─────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async ()=>{
   loadState();
