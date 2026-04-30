@@ -2001,7 +2001,7 @@ function renderBdTable(){
 
     const avg=(arr)=>arr.length?Math.round(arr.reduce((s,x)=>s+x,0)/arr.length*100)/100:0;
     const avgCumUp=avg(reached.map(d=>d.cumUp));
-    const avgOn=avg(reached.map(d=>d.on));
+    const avgOn=avg(reached.filter(d=>!d.lost).map(d=>d.on));
     const avgBefore=avg(reached.map(d=>d.before));
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
     const losses=reached.filter(d=>d.lost).length;
