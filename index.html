@@ -1986,11 +1986,14 @@ function renderBdTable(){
 
     const attData=state.attempts.map(a=>{
       const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
-      if(i>endIdx) return null;
+      const lostHere=a.ended&&a.endedAtIndex===i;
+      // Reached = passed it, OR run ended right here (fought and lost)
+      if(i>endIdx&&!lostHere) return null;
       return {
         cumUp: cumDeaths(a,i),
         on: a.deaths[i],
         before: cumDeaths(a,i)-a.deaths[i],
+        lost: lostHere,
       };
     });
     const reached=attData.filter(d=>d!==null);
@@ -2001,10 +2004,12 @@ function renderBdTable(){
     const avgOn=avg(reached.map(d=>d.on));
     const avgBefore=avg(reached.map(d=>d.before));
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
+    const losses=reached.filter(d=>d.lost).length;
 
     const heatCells=state.attempts.map((a,ai)=>{
       const d=attData[ai];
       if(d===null) return `<td class="bd-heat" style="background:#111;border-color:#161616" title="${a.label}: not reached"></td>`;
+      if(d.lost) return `<td class="bd-heat" style="background:#4a1a1a;color:#e05555;border-color:#6e2a2a" title="${a.label}: run ended here">✕</td>`;
       const bg=bdHeatColor(d.on,maxDeaths);
       const fg=d.on===0?'#333':(d.on/maxDeaths>0.5?'#fff':'#111');
       return bg
@@ -2020,6 +2025,7 @@ function renderBdTable(){
       <td style="color:#bbb">${avgBefore}</td>
       <td style="color:#e05555;font-weight:600">${totalOn}</td>
       <td style="color:#666">${reached.length}×</td>
+      <td style="color:${losses>0?'#e05555':'#444'};font-weight:${losses>0?600:400}">${losses}</td>
       ${heatCells}
     </tr>`;
   }).filter(Boolean).join('');
@@ -2034,6 +2040,7 @@ function renderBdTable(){
     <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths before this trainer">Avg before</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Total deaths on this trainer across all attempts">Total on</th>
     <th style="position:sticky;top:0;background:#0e0e0e">Reached</th>
+    <th style="position:sticky;top:0;background:#0e0e0e" title="Times the run ended at this trainer">Losses</th>
     ${attHeaders}
   `;
   body.innerHTML=rows||'<tr><td colspan="20" style="color:#444;padding:12px">None of the selected trainers have been reached yet.</td></tr>';
