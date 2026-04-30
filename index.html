@@ -1854,8 +1854,29 @@ function renderTimeline(){
     return (SPLITS_CFG[TRAINERS[endIdx]?.s||'']||{color:'#4e79a7'}).color;
   });
 
+  // Mark PBs — attempt is a PB if it reached further than all previous attempts
+  const isPB=reaches.map((r,i)=>i===0||r>Math.max(...reaches.slice(0,i)));
+
   const h=Math.max(300, state.attempts.length*32+60);
   canvas.parentElement.style.height=h+'px';
+
+  const crownPlugin={
+    id:'crowns',
+    afterDraw(chart){
+      const {ctx,scales}=chart;
+      const xs=scales.x, ys=scales.y;
+      ctx.save();
+      ctx.font='13px serif';
+      ctx.textBaseline='middle';
+      reaches.forEach((r,i)=>{
+        if(!isPB[i]) return;
+        const xPx=xs.getPixelForValue(r+1);
+        const yPx=ys.getPixelForValue(i);
+        ctx.fillText('👑', xPx+5, yPx);
+      });
+      ctx.restore();
+    }
+  };
 
   timelineChartInst=new Chart(canvas,{
     type:'bar',
@@ -1869,6 +1890,7 @@ function renderTimeline(){
         borderRadius:3,
       }]
     },
+    plugins:[crownPlugin],
     options:{
       indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:false,
       scales:{
@@ -1886,7 +1908,7 @@ function renderTimeline(){
           backgroundColor:'rgba(14,14,14,0.96)',titleColor:'#eee',bodyColor:'#bbb',
           borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
           callbacks:{
-            title:items=>`${state.attempts[items[0].dataIndex].label}`,
+            title:items=>`${state.attempts[items[0].dataIndex].label}${isPB[items[0].dataIndex]?' 👑 PB':''}`,
             label:item=>{
               const a=state.attempts[item.dataIndex];
               const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
