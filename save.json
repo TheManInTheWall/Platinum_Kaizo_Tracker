@@ -7146,9 +7146,9 @@
     {
       "id": 18,
       "label": "Attempt 18",
-      "ended": false,
-      "endedAtIndex": null,
-      "currentIndex": 113,
+      "ended": true,
+      "endedAtIndex": 112,
+      "currentIndex": 112,
       "deaths": [
         0,
         0,
