@@ -106,9 +106,7 @@ const TRAINERS = [
 {n:"Psychic Cheyenne (FOG)",s:"Fantina"},
 {n:"Leader Fantina",s:"Fantina"},
 // ── Maylene ────────────────────────────────────────────
-{n:"Barry #3 (Chimchar)",s:"Maylene"},
-{n:"Barry #3 (Piplup)",s:"Maylene"},
-{n:"Barry #3 (Turtwig)",s:"Maylene"},
+{n:"Barry #3",s:"Maylene"},
 {n:"Pkmn Breeder Albert",s:"Maylene"},
 {n:"Jogger Richard",s:"Maylene"},
 {n:"Twins Emma & Lil (DOUBLE BATTLE)",s:"Maylene"},
