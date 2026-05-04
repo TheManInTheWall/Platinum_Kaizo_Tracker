@@ -118,6 +118,7 @@ const TRAINERS = [
 {n:"Rancher Marco",s:"Maylene"},
 {n:"Jogger Wyatt (OPTIONAL)",s:"Maylene"},
 {n:"Belle & Pa Ava & Matt (DOUBLE BATTLE)",s:"Maylene"},
+{n:"Waitress Kati",s:"Maylene"},
 {n:"Pkmn Breeder Johnny",s:"Maylene"},
 {n:"Gambler John Keating (SUPERBOSS)*",s:"Maylene"},
 {n:"Ruin Maniac Calvin (RAIN)",s:"Maylene"},
