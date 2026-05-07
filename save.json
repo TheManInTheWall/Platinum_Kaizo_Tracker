@@ -7985,7 +7985,7 @@
       "label": "Attempt 20",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 32,
+      "currentIndex": 34,
       "deaths": [
         0,
         0,
@@ -8021,7 +8021,7 @@
         0,
         0,
         0,
-        0,
+        1,
         0,
         0,
         0,
@@ -8400,5 +8400,5 @@
     }
   ],
   "nextId": 21,
-  "activeId": 18
+  "activeId": 20
 }
