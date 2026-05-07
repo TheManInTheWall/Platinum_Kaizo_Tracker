@@ -2039,7 +2039,6 @@ function renderBdTable(){
     const avgOn=avg(reached.filter(d=>!d.lost).map(d=>d.on));
     const minOn=min(reached.filter(d=>!d.lost).map(d=>d.on));
     const avgBefore=avg(reached.map(d=>d.before));
-    const minBefore=min(reached.map(d=>d.before));
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
     const losses=reached.filter(d=>d.lost).length;
 
@@ -2062,7 +2061,6 @@ function renderBdTable(){
       <td style="color:${avgOn>0?'#e05555':'#59a14f'};font-weight:600">${avgOn}</td>
       <td style="color:#555;font-size:10px">${minOn}</td>
       <td style="color:#bbb">${avgBefore}</td>
-      <td style="color:#555;font-size:10px">${minBefore}</td>
       <td style="color:#e05555;font-weight:600">${totalOn}</td>
       <td style="color:#666">${reached.length}×</td>
       <td style="color:${losses>0?'#e05555':'#444'};font-weight:${losses>0?600:400}">${losses}</td>
@@ -2080,7 +2078,6 @@ function renderBdTable(){
     <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths on this trainer">Avg on</th>
     <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min deaths on this trainer">Min</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths before this trainer">Avg before</th>
-    <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min deaths before this trainer">Min</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Total deaths on this trainer across all attempts">Total on</th>
     <th style="position:sticky;top:0;background:#0e0e0e">Reached</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Times the run ended at this trainer">Losses</th>
