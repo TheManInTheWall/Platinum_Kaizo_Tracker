@@ -1662,15 +1662,26 @@ function renderInsights(){
   <div style="flex:1;min-width:240px">
     <div class="a-title">Death spikes — dangerous walls relative to neighbours</div>
     <table class="data-table">
-      <thead><tr><th>#</th><th>Trainer</th><th>Split</th><th>Avg deaths</th></tr></thead>
+      <thead><tr><th>#</th><th>Trainer</th><th>Split</th><th>Context (avg deaths)</th></tr></thead>
       <tbody>
       ${spikes.length?spikes.map((x,i)=>{
         const cfg=SPLITS_CFG[x.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+        const ri=reached.findIndex(r=>r.i===x.i);
+        const contextItems=[-3,-2,-1,0,1,2,3].map(offset=>{
+          const neighbour=reached[ri+offset];
+          if(!neighbour) return null;
+          const isSpike=offset===0;
+          const val=neighbour.avg.toFixed(2);
+          const color=isSpike?'#edc948':'rgba(150,150,150,0.45)';
+          const weight=isSpike?'700':'400';
+          const size=isSpike?'12px':'10px';
+          return `<span style="color:${color};font-weight:${weight};font-size:${size}" title="${neighbour.n}">${val}</span>`;
+        }).filter(Boolean);
         return `<tr>
           <td style="color:#444">${i+1}</td>
           <td>${x.n}</td>
           <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${x.s}</span></td>
-          <td style="color:#edc948;font-weight:600">${x.avg.toFixed(2)}</td>
+          <td style="display:flex;gap:5px;align-items:center">${contextItems.join('<span style="color:#333;font-size:9px"> — </span>')}</td>
         </tr>`;
       }).join(''):'<tr><td colspan="4" style="color:#444">Not enough data yet</td></tr>'}
       </tbody>
@@ -2022,9 +2033,13 @@ function renderBdTable(){
     if(!reached.length) return null;
 
     const avg=(arr)=>arr.length?Math.round(arr.reduce((s,x)=>s+x,0)/arr.length*100)/100:0;
+    const min=(arr)=>arr.length?Math.min(...arr):0;
     const avgCumUp=avg(reached.map(d=>d.cumUp));
+    const minCumUp=min(reached.map(d=>d.cumUp));
     const avgOn=avg(reached.filter(d=>!d.lost).map(d=>d.on));
+    const minOn=min(reached.filter(d=>!d.lost).map(d=>d.on));
     const avgBefore=avg(reached.map(d=>d.before));
+    const minBefore=min(reached.map(d=>d.before));
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
     const losses=reached.filter(d=>d.lost).length;
 
@@ -2043,8 +2058,11 @@ function renderBdTable(){
       <td style="white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${t.n}">${t.n}</td>
       <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${t.s}</span></td>
       <td style="color:#bbb">${avgCumUp}</td>
+      <td style="color:#555;font-size:10px">${minCumUp}</td>
       <td style="color:${avgOn>0?'#e05555':'#59a14f'};font-weight:600">${avgOn}</td>
+      <td style="color:#555;font-size:10px">${minOn}</td>
       <td style="color:#bbb">${avgBefore}</td>
+      <td style="color:#555;font-size:10px">${minBefore}</td>
       <td style="color:#e05555;font-weight:600">${totalOn}</td>
       <td style="color:#666">${reached.length}×</td>
       <td style="color:${losses>0?'#e05555':'#444'};font-weight:${losses>0?600:400}">${losses}</td>
@@ -2058,8 +2076,11 @@ function renderBdTable(){
     <th style="position:sticky;top:0;background:#0e0e0e;min-width:140px">Trainer</th>
     <th style="position:sticky;top:0;background:#0e0e0e">Split</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Avg cumulative deaths arriving at this trainer">Avg up to</th>
+    <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min cumulative deaths arriving at this trainer">Min</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths on this trainer">Avg on</th>
+    <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min deaths on this trainer">Min</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths before this trainer">Avg before</th>
+    <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min deaths before this trainer">Min</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Total deaths on this trainer across all attempts">Total on</th>
     <th style="position:sticky;top:0;background:#0e0e0e">Reached</th>
     <th style="position:sticky;top:0;background:#0e0e0e" title="Times the run ended at this trainer">Losses</th>
