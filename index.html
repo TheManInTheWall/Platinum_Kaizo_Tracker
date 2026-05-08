@@ -2034,11 +2034,17 @@ function renderBdTable(){
 
     const avg=(arr)=>arr.length?Math.round(arr.reduce((s,x)=>s+x,0)/arr.length*100)/100:0;
     const min=(arr)=>arr.length?Math.min(...arr):0;
+    const max=(arr)=>arr.length?Math.max(...arr):0;
     const avgCumUp=avg(reached.map(d=>d.cumUp));
     const minCumUp=min(reached.map(d=>d.cumUp));
-    const avgOn=avg(reached.filter(d=>!d.lost).map(d=>d.on));
-    const minOn=min(reached.filter(d=>!d.lost).map(d=>d.on));
+    const maxCumUp=max(reached.map(d=>d.cumUp));
+    const nonLoss=reached.filter(d=>!d.lost);
+    const avgOn=avg(nonLoss.map(d=>d.on));
+    const minOn=min(nonLoss.map(d=>d.on));
+    const maxOn=max(nonLoss.map(d=>d.on));
     const avgBefore=avg(reached.map(d=>d.before));
+    const minBefore=min(reached.map(d=>d.before));
+    const maxBefore=max(reached.map(d=>d.before));
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
     const losses=reached.filter(d=>d.lost).length;
 
@@ -2056,11 +2062,15 @@ function renderBdTable(){
     return `<tr>
       <td style="white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${t.n}">${t.n}</td>
       <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${t.s}</span></td>
+      <td style="color:#59a14f;font-size:10px">${minCumUp}</td>
       <td style="color:#bbb">${avgCumUp}</td>
-      <td style="color:#555;font-size:10px">${minCumUp}</td>
-      <td style="color:${avgOn>0?'#e05555':'#59a14f'};font-weight:600">${avgOn}</td>
-      <td style="color:#555;font-size:10px">${minOn}</td>
+      <td style="color:#e05555;font-size:10px">${maxCumUp}</td>
+      <td style="color:#59a14f;font-size:10px">${minOn}</td>
+      <td style="color:${avgOn>0?'#edc948':'#59a14f'};font-weight:600">${avgOn}</td>
+      <td style="color:#e05555;font-size:10px">${maxOn}</td>
+      <td style="color:#59a14f;font-size:10px">${minBefore}</td>
       <td style="color:#bbb">${avgBefore}</td>
+      <td style="color:#e05555;font-size:10px">${maxBefore}</td>
       <td style="color:#e05555;font-weight:600">${totalOn}</td>
       <td style="color:#666">${reached.length}×</td>
       <td style="color:${losses>0?'#e05555':'#444'};font-weight:${losses>0?600:400}">${losses}</td>
@@ -2070,18 +2080,29 @@ function renderBdTable(){
 
   const attHeaders=state.attempts.map(a=>`<th class="bd-heat" title="${a.label}" style="writing-mode:vertical-rl;transform:rotate(180deg);max-height:70px;overflow:hidden;text-overflow:ellipsis;background:#0e0e0e;position:sticky;top:0;color:#666">${a.label}</th>`).join('');
 
-  document.querySelector('#bdTable thead tr').innerHTML=`
-    <th style="position:sticky;top:0;background:#0e0e0e;min-width:140px">Trainer</th>
-    <th style="position:sticky;top:0;background:#0e0e0e">Split</th>
-    <th style="position:sticky;top:0;background:#0e0e0e" title="Avg cumulative deaths arriving at this trainer">Avg up to</th>
-    <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min cumulative deaths arriving at this trainer">Min</th>
-    <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths on this trainer">Avg on</th>
-    <th style="position:sticky;top:0;background:#0e0e0e;color:#555;font-size:10px" title="Min deaths on this trainer">Min</th>
-    <th style="position:sticky;top:0;background:#0e0e0e" title="Avg deaths before this trainer">Avg before</th>
-    <th style="position:sticky;top:0;background:#0e0e0e" title="Total deaths on this trainer across all attempts">Total on</th>
-    <th style="position:sticky;top:0;background:#0e0e0e">Reached</th>
-    <th style="position:sticky;top:0;background:#0e0e0e" title="Times the run ended at this trainer">Losses</th>
-    ${attHeaders}
+  document.querySelector('#bdTable thead tr').outerHTML=`
+    <tr>
+      <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;min-width:140px;vertical-align:bottom">Trainer</th>
+      <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;vertical-align:bottom">Split</th>
+      <th colspan="3" style="position:sticky;top:0;background:#0e0e0e;text-align:center;border-bottom:1px solid #2a2a2a;color:#888;padding-bottom:2px">Avg up to</th>
+      <th colspan="3" style="position:sticky;top:0;background:#0e0e0e;text-align:center;border-bottom:1px solid #2a2a2a;color:#888;padding-bottom:2px">Avg on</th>
+      <th colspan="3" style="position:sticky;top:0;background:#0e0e0e;text-align:center;border-bottom:1px solid #2a2a2a;color:#888;padding-bottom:2px">Avg before</th>
+      <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;vertical-align:bottom" title="Total deaths on this trainer across all attempts">Total on</th>
+      <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;vertical-align:bottom">Reached</th>
+      <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;vertical-align:bottom" title="Times the run ended at this trainer">Losses</th>
+      ${attHeaders}
+    </tr>
+    <tr style="background:#0e0e0e">
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#59a14f;font-size:10px;font-weight:400">min</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#edc948;font-size:10px;font-weight:400">avg</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#e05555;font-size:10px;font-weight:400">max</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#59a14f;font-size:10px;font-weight:400">min</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#edc948;font-size:10px;font-weight:400">avg</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#e05555;font-size:10px;font-weight:400">max</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#59a14f;font-size:10px;font-weight:400">min</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#edc948;font-size:10px;font-weight:400">avg</th>
+      <th style="position:sticky;top:0;background:#0e0e0e;color:#e05555;font-size:10px;font-weight:400">max</th>
+    </tr>
   `;
   body.innerHTML=rows||'<tr><td colspan="20" style="color:#444;padding:12px">None of the selected trainers have been reached yet.</td></tr>';
 }
