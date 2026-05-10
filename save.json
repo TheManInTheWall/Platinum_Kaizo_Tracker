@@ -8403,11 +8403,11 @@
       "label": "Attempt 21",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 0,
+      "currentIndex": 5,
       "deaths": [
         0,
         0,
-        0,
+        1,
         0,
         0,
         0,
