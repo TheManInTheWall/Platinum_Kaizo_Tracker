@@ -172,6 +172,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-timeline" onclick="setPage('timeline')">Timeline</div>
   <div class="navtab" id="tab-progress" onclick="setPage('progress')">Progress</div>
   <div class="navtab" id="tab-breakdown" onclick="setPage('breakdown')">Trainer breakdown</div>
+  <div class="navtab" id="tab-bosses" onclick="setPage('bosses')">Bosses</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
 
@@ -370,6 +371,28 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<!-- ── Bosses ── -->
+<div class="page" id="page-bosses" style="flex-direction:column;overflow-y:auto">
+  <div class="analytics-page" style="flex:none;overflow:visible">
+    <div class="a-title">Boss record — wins vs losses. Edit BOSSES in trainers.js to customise.</div>
+    <table class="data-table" id="bossTable" style="max-width:700px">
+      <thead>
+        <tr>
+          <th>Trainer</th>
+          <th>Split</th>
+          <th style="color:#59a14f">Wins</th>
+          <th style="color:#e05555">Losses</th>
+          <th>Win %</th>
+          <th style="min-width:120px">Record</th>
+        </tr>
+      </thead>
+      <tbody id="bossBody">
+        <tr><td colspan="6" style="color:#444;padding:20px">No data yet.</td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
 
@@ -1126,6 +1149,7 @@ function setPage(p){
   else if(p==='timeline') renderTimeline();
   else if(p==='progress') renderProgress();
   else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
+  else if(p==='bosses') renderBosses();
   else if(p==='insights') renderInsights();
 }
 
@@ -2086,7 +2110,7 @@ function renderBdTable(){
 
   const GH='position:sticky;top:0;background:#0e0e0e;text-align:center;padding:4px 8px;border-bottom:2px solid #3a3a3a;color:#aaa;letter-spacing:.04em;border-left:2px solid #2a2a2a';
   const GS='position:sticky;top:0;background:#0e0e0e;border-left:2px solid #2a2a2a';
-  document.querySelector('#bdTable thead tr').outerHTML=`
+  document.querySelector('#bdTable thead').innerHTML=`
     <tr>
       <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;min-width:140px;vertical-align:bottom;padding-bottom:6px">Trainer</th>
       <th rowspan="2" style="position:sticky;top:0;background:#0e0e0e;vertical-align:bottom;padding-bottom:6px">Split</th>
@@ -2108,9 +2132,58 @@ function renderBdTable(){
       <th style="${GS};color:#59a14f;font-size:10px;font-weight:400">min</th>
       <th style="position:sticky;top:0;background:#0e0e0e;color:#edc948;font-size:10px;font-weight:400">avg</th>
       <th style="position:sticky;top:0;background:#0e0e0e;color:#e05555;font-size:10px;font-weight:400">max</th>
-    </tr>
-  `;
+    </tr>`;
   body.innerHTML=rows||'<tr><td colspan="20" style="color:#444;padding:12px">None of the selected trainers have been reached yet.</td></tr>';
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BOSSES
+// ─────────────────────────────────────────────────────────────────
+function renderBosses(){
+  const body=document.getElementById('bossBody');
+  if(!body) return;
+  if(!state.attempts.length){
+    body.innerHTML='<tr><td colspan="6" style="color:#444;padding:20px">No attempts yet.</td></tr>';
+    return;
+  }
+  if(typeof BOSSES==='undefined'||!BOSSES.length){
+    body.innerHTML='<tr><td colspan="6" style="color:#444;padding:20px">Add trainer names to the BOSSES array in trainers.js.</td></tr>';
+    return;
+  }
+
+  const nameToIdx={};
+  TRAINERS.forEach((t,i)=>{ nameToIdx[t.n]=i; });
+
+  const rows=BOSSES.map(bossName=>{
+    const i=nameToIdx[bossName];
+    if(i===undefined) return `<tr><td colspan="6" style="color:#555;font-size:11px">${bossName} <span style="color:#444">(not found in trainer list)</span></td></tr>`;
+    const t=TRAINERS[i];
+    const cfg=SPLITS_CFG[t.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
+    let wins=0, losses=0;
+    state.attempts.forEach(a=>{
+      const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+      if(a.ended&&a.endedAtIndex===i){ losses++; return; }
+      if(i<=endIdx) wins++;
+    });
+    const total=wins+losses;
+    if(total===0) return null;
+    const pct=Math.round(wins/total*100);
+    return `<tr>
+      <td style="font-weight:500">${t.n}</td>
+      <td><span class="split-cell" style="background:${cfg.bg};color:${cfg.color}">${t.s}</span></td>
+      <td style="color:#59a14f;font-weight:600">${wins}</td>
+      <td style="color:#e05555;font-weight:600">${losses}</td>
+      <td style="font-weight:600;color:${pct>=70?'#59a14f':pct>=40?'#edc948':'#e05555'}">${pct}%</td>
+      <td>
+        <div style="display:flex;gap:2px;align-items:center;height:14px">
+          <div style="width:${Math.round(pct*1.2)}px;background:#59a14f88;border-radius:2px 0 0 2px;height:100%" title="${wins} wins"></div>
+          <div style="width:${Math.round((100-pct)*1.2)}px;background:#e0555588;border-radius:0 2px 2px 0;height:100%" title="${losses} losses"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).filter(Boolean);
+
+  body.innerHTML=rows.join('')||'<tr><td colspan="6" style="color:#444;padding:12px">None of the listed bosses have been reached yet.</td></tr>';
 }
 
 document.addEventListener('keydown', e=>{

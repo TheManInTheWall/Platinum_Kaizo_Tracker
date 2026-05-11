@@ -3,7 +3,7 @@
 // Format: { n: "Name", s: "SplitName" }
 // ─────────────────────────────────────────────────────────────────
 const TRAINERS = [
-// ── Roark ──────────────────────────────────────────────
+  // ── Roark ──────────────────────────────────────────────
 {n:"Before First Battle",s:"Roark"},
 {n:"Youngster Tristan",s:"Roark"},
 {n:"Lass Natalie",s:"Roark"},
@@ -64,6 +64,7 @@ const TRAINERS = [
 {n:"Aroma Lady Jenna",s:"Gardenia"},
 {n:"Artist Angel",s:"Gardenia"},
 {n:"Leader Gardenia",s:"Gardenia"},
+
 // ── Fantina ────────────────────────────────────────────
 {n:"Galactic Amalthia (Gauntlet Start)*",s:"Fantina"},
 {n:"Scientist Galileo (Gauntlet End)*",s:"Fantina"},
@@ -425,7 +426,33 @@ const TRAINERS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────
-// SPLIT COLOURS — add new splits here when you add new split names
+// BOSS LIST — add trainer names here (must match exactly what's in TRAINERS)
+// These show win/loss records in the Bosses tab
+// ─────────────────────────────────────────────────────────────────
+const BOSSES = [
+  "Leader Roark",
+  "Leader Gardenia",
+  "Leader Fantina",
+  "Leader Maylene",
+  "Leader Crasher Wake",
+  "Leader Byron",
+  "Leader Candice (HAIL)",
+  "Leader Volkner (Double Battle)",
+  "Leader Cyrus (Trick Room)",
+  "Commander Mars (DOUBLE)",
+  "Galactic Terra & Galactic Luna",
+  "Commander Jupiter",
+  "Commander Saturn",
+  "Barry #2",
+  "Barry #3",
+  "Barry #4 (Chimchar, Pastoria Gym)",
+  "Barry #5 (Chimchar, Canalave Bridge)",
+  "Barry #6 (Chimchar)",
+  "Gambler John Keating (SUPERBOSS)*",
+  "Scientist Jonathon",
+  "Cyclist Karen",
+];
+ — add new splits here when you add new split names
 // ─────────────────────────────────────────────────────────────────
 const SPLITS_CFG = {
   "Roark":      {color:"#BA7517", bg:"rgba(186,117,23,0.2)"},
