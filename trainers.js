@@ -452,7 +452,8 @@ const BOSSES = [
   "Scientist Jonathon",
   "Cyclist Karen",
 ];
- — add new splits here when you add new split names
+
+// — add new splits here when you add new split names
 // ─────────────────────────────────────────────────────────────────
 const SPLITS_CFG = {
   "Roark":      {color:"#BA7517", bg:"rgba(186,117,23,0.2)"},
