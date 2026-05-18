@@ -5891,7 +5891,7 @@
       "label": "Attempt 15",
       "ended": true,
       "endedAtIndex": 69,
-      "currentIndex": 69,
+      "currentIndex": 71,
       "deaths": [
         0,
         0,
@@ -10911,7 +10911,7 @@
       "label": "Attempt 27",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 22,
+      "currentIndex": 30,
       "deaths": [
         0,
         0,
