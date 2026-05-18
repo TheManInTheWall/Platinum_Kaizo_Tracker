@@ -224,6 +224,15 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 
   <div class="chart-area">
     <div class="split-legend" id="splitLegend"></div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-shrink:0;flex-wrap:wrap">
+      <span style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.06em">Show:</span>
+      <button class="btn active-filter" id="fAll"    onclick="setFilter('all')"    style="font-size:10px;padding:3px 9px">All</button>
+      <button class="btn"              id="fLast5"   onclick="setFilter('last5')"  style="font-size:10px;padding:3px 9px">Last 5</button>
+      <button class="btn"              id="fBest5"   onclick="setFilter('best5')"  style="font-size:10px;padding:3px 9px">Best 5</button>
+      <button class="btn"              id="fFirst5"  onclick="setFilter('first5')" style="font-size:10px;padding:3px 9px">First 5</button>
+      <button class="btn"              id="fCustom"  onclick="setFilter('custom')" style="font-size:10px;padding:3px 9px">Custom</button>
+      <span id="customHint" style="font-size:10px;color:#555;display:none">— click attempt pills to toggle</span>
+    </div>
     <div class="chart-scroll">
       <div class="chart-inner" id="chartInner">
         <canvas id="mainChart"></canvas>
@@ -2067,9 +2076,9 @@ function renderBdTable(){
     const avgOn=avg(nonLoss.map(d=>d.on));
     const minOn=min(nonLoss.map(d=>d.on));
     const maxOn=max(nonLoss.map(d=>d.on));
-    const avgCumUp=avg(reached.map(d=>d.cumUp));
-    const minCumUp=min(reached.map(d=>d.cumUp));
-    const maxCumUp=max(reached.map(d=>d.cumUp));
+    const avgCumUp=avg(nonLoss.map(d=>d.cumUp));
+    const minCumUp=min(nonLoss.map(d=>d.cumUp));
+    const maxCumUp=max(nonLoss.map(d=>d.cumUp));
     const afterArr=[];
     const avgAfter=0,minAfter='-',maxAfter='-';
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
