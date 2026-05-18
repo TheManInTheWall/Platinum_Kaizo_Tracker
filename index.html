@@ -113,7 +113,9 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .tt-val{width:30px;text-align:right;font-weight:600;color:#e05555;flex-shrink:0}
 .tt-avg{width:36px;text-align:right;color:#777;flex-shrink:0;font-size:10px}
 
-/* ── heatmap ── */
+.pill.pill-hidden{opacity:0.3;border-style:dashed}
+.btn.active-filter{background:#1a2e4a;border-color:#3a6ea5;color:#8fc6ff}
+
 .hm-table{border-collapse:collapse;font-size:9px;white-space:nowrap}
 .hm-table th{padding:2px 5px;color:#555;font-weight:400;text-align:right;position:sticky;left:0;background:#161616;z-index:1;max-width:140px;overflow:hidden;text-overflow:ellipsis}
 .hm-table td{width:18px;height:18px;text-align:center;border:1px solid #1a1a1a;font-size:8px;font-weight:600;cursor:default}
@@ -224,6 +226,15 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 
   <div class="chart-area">
     <div class="split-legend" id="splitLegend"></div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-shrink:0;flex-wrap:wrap">
+      <span style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.06em">Show:</span>
+      <button class="btn active-filter" id="fAll"    onclick="setFilter('all')"    style="font-size:10px;padding:3px 9px">All</button>
+      <button class="btn"              id="fLast5"   onclick="setFilter('last5')"  style="font-size:10px;padding:3px 9px">Last 5</button>
+      <button class="btn"              id="fBest5"   onclick="setFilter('best5')"  style="font-size:10px;padding:3px 9px">Best 5</button>
+      <button class="btn"              id="fFirst5"  onclick="setFilter('first5')" style="font-size:10px;padding:3px 9px">First 5</button>
+      <button class="btn"              id="fCustom"  onclick="setFilter('custom')" style="font-size:10px;padding:3px 9px">Custom</button>
+      <span id="customHint" style="font-size:10px;color:#555;display:none">— click attempt pills to toggle</span>
+    </div>
     <div class="chart-scroll">
       <div class="chart-inner" id="chartInner">
         <canvas id="mainChart"></canvas>
@@ -693,22 +704,59 @@ const bgPlugin={
   }
 };
 
+// ─────────────────────────────────────────────────────────────────
+// CHART FILTER
+// ─────────────────────────────────────────────────────────────────
+let chartFilter='all';
+let chartCustom=new Set();
+
+function getFilteredIndices(){
+  const n=state.attempts.length;
+  if(!n) return [];
+  if(chartFilter==='all') return state.attempts.map((_,i)=>i);
+  if(chartFilter==='first5') return state.attempts.slice(0,5).map((_,i)=>i);
+  if(chartFilter==='last5') return state.attempts.slice(-5).map((_,i)=>n-Math.min(5,n)+i);
+  if(chartFilter==='best5'){
+    return [...state.attempts.entries()]
+      .map(([i,a])=>({i,reach:a.ended?a.endedAtIndex-1:a.currentIndex}))
+      .sort((a,b)=>b.reach-a.reach).slice(0,5).map(x=>x.i);
+  }
+  if(chartFilter==='custom'){
+    return state.attempts.map((_,i)=>i).filter(i=>chartCustom.has(state.attempts[i].id));
+  }
+  return state.attempts.map((_,i)=>i);
+}
+
+function setFilter(mode){
+  chartFilter=mode;
+  if(mode==='custom'&&chartCustom.size===0){
+    const n=state.attempts.length;
+    state.attempts.slice(-5).forEach(a=>chartCustom.add(a.id));
+  }
+  ['all','last5','best5','first5','custom'].forEach(m=>{
+    const id={all:'fAll',last5:'fLast5',best5:'fBest5',first5:'fFirst5',custom:'fCustom'}[m];
+    document.getElementById(id)?.classList.toggle('active-filter', m===mode);
+  });
+  document.getElementById('customHint').style.display=mode==='custom'?'inline':'none';
+  renderPills();
+  updateChart();
+}
+
+function toggleCustomAttempt(id){
+  if(chartCustom.has(id)) chartCustom.delete(id); else chartCustom.add(id);
+  renderPills(); updateChart();
+}
+
 function buildDataset(attempt, idx){
-  // line ends at endedAtIndex-1 for ended runs; at currentIndex for active
   const endIdx=attempt.ended ? Math.max(-1, attempt.endedAtIndex-1) : attempt.currentIndex;
   const data=TRAINERS.map((_,i)=> i<=endIdx ? cumDeaths(attempt,i) : null);
   const col=ATT_COLORS[idx%ATT_COLORS.length];
-  return {
-    label:attempt.label,
-    data,
-    borderColor:col,
-    backgroundColor:col,
-    borderWidth:attempt.ended?1.5:2.5,
-    pointRadius:1.5,
-    pointHoverRadius:5,
-    tension:0.1,
-    spanGaps:false,
-  };
+  return {label:attempt.label,data,borderColor:col,backgroundColor:col,
+    borderWidth:attempt.ended?1.5:2.5,pointRadius:1.5,pointHoverRadius:5,tension:0.1,spanGaps:false};
+}
+
+function buildFilteredDatasets(){
+  return getFilteredIndices().map(i=>buildDataset(state.attempts[i],i));
 }
 
 let chart=null;
@@ -719,23 +767,13 @@ function initChart(){
   const labels=TRAINERS.map((t,i)=>`${i+1}. ${t.n}`);
   chart=new Chart(canvas,{
     type:'line',
-    data:{labels, datasets:state.attempts.map((a,i)=>buildDataset(a,i))},
+    data:{labels, datasets:buildFilteredDatasets()},
     plugins:[bgPlugin],
     options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
+      responsive:true, maintainAspectRatio:false, animation:false,
       scales:{
         x:{
-          ticks:{
-            maxRotation:90,minRotation:70,
-            font:{size:8},color:'#555',autoSkip:false,
-            callback:(val,idx)=>{
-              const s=TRAINERS[idx].s;
-              if(idx===0||TRAINERS[idx-1].s!==s) return TRAINERS[idx].n.substring(0,18);
-              return '';
-            }
-          },
+          ticks:{maxRotation:90,minRotation:70,font:{size:8},color:'#555',autoSkip:false,callback:()=>''},
           grid:{color:'rgba(255,255,255,0.04)'},
         },
         y:{
@@ -749,8 +787,7 @@ function initChart(){
         legend:{display:false},
         tooltip:{
           mode:'index',intersect:false,
-          backgroundColor:'rgba(16,16,16,0.96)',
-          titleColor:'#eee',bodyColor:'#bbb',
+          backgroundColor:'rgba(16,16,16,0.96)',titleColor:'#eee',bodyColor:'#bbb',
           borderColor:'rgba(255,255,255,0.12)',borderWidth:1,
           filter:item=>item.raw!==null,
           callbacks:{
@@ -765,7 +802,7 @@ function initChart(){
 
 function updateChart(){
   if(!chart) return initChart();
-  chart.data.datasets=state.attempts.map((a,i)=>buildDataset(a,i));
+  chart.data.datasets=buildFilteredDatasets();
   chart.update('none');
 }
 
@@ -781,12 +818,20 @@ function renderPills(){
   const el=document.getElementById('attemptPills');
   el.innerHTML=state.attempts.map(a=>{
     let cls='pill';
-    if(a.id===state.activeId) cls+=' selected';
+    if(a.id===state.activeId&&chartFilter!=='custom') cls+=' selected';
     if(a.ended) cls+=' ended-att';
-    const tip=a.ended?`Ended before ${TRAINERS[a.endedAtIndex]?.n||'?'} — click to edit`:'Active — click to edit';
-    return `<span class="${cls}" title="${tip}" onclick="selectAttempt(${a.id})">${a.label}${a.ended?' ✕':' ●'}</span>`;
+    const inCustom=chartCustom.has(a.id);
+    if(chartFilter==='custom'&&!inCustom) cls+=' pill-hidden';
+    const tip=chartFilter==='custom'
+      ?`Click to ${inCustom?'hide':'show'} on chart`
+      :(a.ended?`Ended before ${TRAINERS[a.endedAtIndex]?.n||'?'} — click to edit`:'Active — click to edit');
+    const onclick=chartFilter==='custom'
+      ?`toggleCustomAttempt(${a.id})`
+      :`selectAttempt(${a.id})`;
+    return `<span class="${cls}" title="${tip}" onclick="${onclick}">${a.label}${a.ended?' ✕':' ●'}</span>`;
   }).join('');
 }
+
 
 function renderSidebar(){
   const a=getActive();
@@ -2067,9 +2112,9 @@ function renderBdTable(){
     const avgOn=avg(nonLoss.map(d=>d.on));
     const minOn=min(nonLoss.map(d=>d.on));
     const maxOn=max(nonLoss.map(d=>d.on));
-    const avgCumUp=avg(reached.map(d=>d.cumUp));
-    const minCumUp=min(reached.map(d=>d.cumUp));
-    const maxCumUp=max(reached.map(d=>d.cumUp));
+    const avgCumUp=avg(nonLoss.map(d=>d.cumUp));
+    const minCumUp=min(nonLoss.map(d=>d.cumUp));
+    const maxCumUp=max(nonLoss.map(d=>d.cumUp));
     const afterArr=[];
     const avgAfter=0,minAfter='-',maxAfter='-';
     const totalOn=reached.reduce((s,d)=>s+d.on,0);
