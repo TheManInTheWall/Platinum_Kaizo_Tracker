@@ -254,7 +254,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
           <span>Only trainers reached in at least one attempt are shown.</span>
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:#aaa;margin-left:auto;flex-shrink:0">
             <input type="checkbox" id="stackedLosses" onchange="renderStackedChart()" style="accent-color:#e05555">
-            Count losses as 6 deaths each
+            Count losses as full party wipes (default ×6, exceptions in trainers.js)
           </label>
         </div>
         <div class="a-panel-body">
@@ -645,13 +645,16 @@ function nextTrainer(){
 function toggleEndRun(){
   const a=getActive(); if(!a) return;
   if(a.ended){
-    // Resume
-    a.ended=false; a.endedAtIndex=null;
+    a.ended=false; a.endedAtIndex=null; a.partyAtEnd=null;
     saveState(); render();
   } else {
     const t=TRAINERS[a.currentIndex].n;
-    if(!confirm(`End run at "${t}"?\n\nThe chart line stops before this trainer.\nDeaths recorded here are cleared.`)) return;
+    const defaultSize=(typeof PARTY_SIZE_EXCEPTIONS!=='undefined'&&PARTY_SIZE_EXCEPTIONS[t])||6;
+    const raw=prompt(`End run at "${t}"?\n\nHow many Pokémon do you have left in your party?\n(The chart line stops before this trainer. Deaths recorded here are cleared.)`, defaultSize);
+    if(raw===null) return; // cancelled
+    const party=Math.max(1,Math.min(6,parseInt(raw)||defaultSize));
     a.ended=true; a.endedAtIndex=a.currentIndex;
+    a.partyAtEnd=party;
     a.deaths[a.currentIndex]=0;
     saveState(); render();
   }
@@ -1248,34 +1251,25 @@ function renderStackedChart(){
   const splits=stats.map(x=>x.s);
   const countLosses=document.getElementById('stackedLosses')?.checked;
 
+  const defaultParty=(x)=>(typeof PARTY_SIZE_EXCEPTIONS!=='undefined'&&PARTY_SIZE_EXCEPTIONS[x.n])||6;
+
   const datasets=state.attempts.map((a,ai)=>{
     const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
     const col=ATT_COLORS[ai%ATT_COLORS.length];
     return {
       label:a.label,
-      data:stats.map(x=> x.i<=endIdx ? a.deaths[x.i] : 0),
+      data:stats.map(x=>{
+        const lostHere=a.ended&&a.endedAtIndex===x.i;
+        if(lostHere) return countLosses?(a.partyAtEnd||defaultParty(x)):0;
+        if(x.i<=endIdx) return a.deaths[x.i];
+        return 0;
+      }),
       backgroundColor:col+'cc',
       borderColor:col,
       borderWidth:0,
       borderSkipped:false,
     };
   });
-
-  if(countLosses){
-    // For each trainer, sum how many runs ended there × 6
-    const lossData=stats.map(x=>{
-      const losses=state.attempts.filter(a=>a.ended&&a.endedAtIndex===x.i).length;
-      return losses*6;
-    });
-    datasets.push({
-      label:'Losses (×6)',
-      data:lossData,
-      backgroundColor:'rgba(220,60,60,0.5)',
-      borderColor:'rgba(220,60,60,0.8)',
-      borderWidth:1,
-      borderSkipped:false,
-    });
-  }
 
   const bgPlugin2={
     id:'splitBg2',
