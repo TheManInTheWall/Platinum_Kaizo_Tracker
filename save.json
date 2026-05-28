@@ -6,7 +6,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -428,7 +427,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -850,7 +848,6 @@
       "ended": true,
       "endedAtIndex": 55,
       "currentIndex": 55,
-      "partyAtEnd": 3,
       "deaths": [
         0,
         0,
@@ -1272,7 +1269,6 @@
       "ended": true,
       "endedAtIndex": 32,
       "currentIndex": 32,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -1694,7 +1690,6 @@
       "ended": true,
       "endedAtIndex": 10,
       "currentIndex": 10,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -2116,7 +2111,6 @@
       "ended": true,
       "endedAtIndex": 56,
       "currentIndex": 56,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -2538,7 +2532,6 @@
       "ended": true,
       "endedAtIndex": 65,
       "currentIndex": 65,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -2960,7 +2953,6 @@
       "ended": true,
       "endedAtIndex": 0,
       "currentIndex": 0,
-      "partyAtEnd": 1,
       "deaths": [
         0,
         0,
@@ -3374,7 +3366,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "partyAtEnd": 1
     },
     {
       "id": 9,
@@ -3382,7 +3375,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -3804,7 +3796,6 @@
       "ended": true,
       "endedAtIndex": 80,
       "currentIndex": 80,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -4226,7 +4217,6 @@
       "ended": true,
       "endedAtIndex": 0,
       "currentIndex": 0,
-      "partyAtEnd": 1,
       "deaths": [
         0,
         0,
@@ -4638,7 +4628,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "partyAtEnd": 6
     },
     {
       "id": 12,
@@ -4646,7 +4637,6 @@
       "ended": true,
       "endedAtIndex": 58,
       "currentIndex": 58,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -5066,7 +5056,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         1,
@@ -5486,7 +5475,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -5904,9 +5892,8 @@
       "id": 15,
       "label": "Attempt 15",
       "ended": true,
-      "endedAtIndex": 71,
+      "endedAtIndex": 69,
       "currentIndex": 71,
-      "partyAtEnd": 3,
       "deaths": [
         0,
         0,
@@ -6326,7 +6313,6 @@
       "ended": true,
       "endedAtIndex": 94,
       "currentIndex": 94,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -6746,7 +6732,6 @@
       "ended": true,
       "endedAtIndex": 11,
       "currentIndex": 11,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -7166,7 +7151,6 @@
       "ended": true,
       "endedAtIndex": 112,
       "currentIndex": 112,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -7586,7 +7570,6 @@
       "ended": true,
       "endedAtIndex": 49,
       "currentIndex": 49,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -8005,7 +7988,6 @@
       "ended": true,
       "endedAtIndex": 58,
       "currentIndex": 58,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -8424,7 +8406,6 @@
       "ended": true,
       "endedAtIndex": 51,
       "currentIndex": 51,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -8843,7 +8824,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -9262,7 +9242,6 @@
       "ended": true,
       "endedAtIndex": 0,
       "currentIndex": 0,
-      "partyAtEnd": 1,
       "deaths": [
         0,
         0,
@@ -9673,7 +9652,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "partyAtEnd": 6
     },
     {
       "id": 24,
@@ -9681,7 +9661,6 @@
       "ended": true,
       "endedAtIndex": 22,
       "currentIndex": 22,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -10100,7 +10079,6 @@
       "ended": true,
       "endedAtIndex": 51,
       "currentIndex": 51,
-      "partyAtEnd": 6,
       "deaths": [
         0,
         0,
@@ -10519,7 +10497,6 @@
       "ended": true,
       "endedAtIndex": 16,
       "currentIndex": 16,
-      "partyAtEnd": 6,
       "deaths": [
         1,
         0,
@@ -10938,7 +10915,6 @@
       "ended": true,
       "endedAtIndex": 69,
       "currentIndex": 69,
-      "partyAtEnd": 3,
       "deaths": [
         0,
         0,
