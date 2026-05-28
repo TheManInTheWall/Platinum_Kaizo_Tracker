@@ -250,7 +250,13 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="a-title">Deaths per trainer — stacked by attempt</div>
     <div class="a-row">
       <div class="a-panel grow">
-        <div class="a-panel-head" id="stackedHead">Only trainers reached in at least one attempt are shown.</div>
+        <div class="a-panel-head" id="stackedHead" style="display:flex;align-items:center;gap:12px">
+          <span>Only trainers reached in at least one attempt are shown.</span>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:#aaa;margin-left:auto;flex-shrink:0">
+            <input type="checkbox" id="stackedLosses" onchange="renderStackedChart()" style="accent-color:#e05555">
+            Count losses as 6 deaths each
+          </label>
+        </div>
         <div class="a-panel-body">
           <div class="a-scroll">
             <div class="a-chart-inner" id="stackedInner">
@@ -1240,8 +1246,8 @@ function renderStackedChart(){
 
   const labels=stats.map(x=>x.n);
   const splits=stats.map(x=>x.s);
+  const countLosses=document.getElementById('stackedLosses')?.checked;
 
-  // one dataset per attempt — bars stacked
   const datasets=state.attempts.map((a,ai)=>{
     const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
     const col=ATT_COLORS[ai%ATT_COLORS.length];
@@ -1254,6 +1260,22 @@ function renderStackedChart(){
       borderSkipped:false,
     };
   });
+
+  if(countLosses){
+    // For each trainer, sum how many runs ended there × 6
+    const lossData=stats.map(x=>{
+      const losses=state.attempts.filter(a=>a.ended&&a.endedAtIndex===x.i).length;
+      return losses*6;
+    });
+    datasets.push({
+      label:'Losses (×6)',
+      data:lossData,
+      backgroundColor:'rgba(220,60,60,0.5)',
+      borderColor:'rgba(220,60,60,0.8)',
+      borderWidth:1,
+      borderSkipped:false,
+    });
+  }
 
   const bgPlugin2={
     id:'splitBg2',
