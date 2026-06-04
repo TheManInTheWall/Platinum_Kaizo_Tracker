@@ -215,6 +215,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="ss">
       <h2>Stats</h2>
       <div class="stat-row"><span class="sl">Trainers fought</span><span class="sv" id="statFought">—</span></div>
+      <div class="stat-row"><span class="sl">Position</span><span class="sv" id="statPosition">—</span></div>
       <div class="stat-row"><span class="sl">Deaths this run</span><span class="sv" id="statDeaths">—</span></div>
       <div class="stat-row"><span class="sl">Pace delta</span><span class="sv" id="statPace">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best again at</span><span class="sv" id="statPaceBestAt" style="font-size:9px;color:#7fd97f;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
@@ -974,9 +975,22 @@ function renderStats(){
     document.getElementById('statFought').textContent=ci+1;
     document.getElementById('statDeaths').textContent=myCum;
     document.getElementById('statRemaining').textContent=TRAINERS.length-ci-1;
+
+    // Position: how many other attempts reached further
+    const myReach=a.ended?a.endedAtIndex-1:a.currentIndex;
+    const rank=state.attempts.filter(att=>{
+      if(att.id===a.id) return false;
+      const r=att.ended?att.endedAtIndex-1:att.currentIndex;
+      return r>myReach;
+    }).length+1;
+    const suffix=['th','st','nd','rd'];
+    const v=rank%100;
+    const ord=rank+(suffix[(v-20)%10]||suffix[v]||suffix[0]);
+    document.getElementById('statPosition').textContent=ord;
   } else {
     document.getElementById('statFought').textContent='—';
     document.getElementById('statDeaths').textContent='—';
+    document.getElementById('statPosition').textContent='—';
     document.getElementById('statPace').textContent='—';
     document.getElementById('statPace').style.color='';
     bestAtEl.textContent='—';
