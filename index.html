@@ -159,6 +159,10 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="attempt-pills" id="attemptPills"></div>
   <button class="btn b" onclick="showNewAttemptModal()">+ New attempt</button>
   <button class="btn" onclick="undoDeath()" id="undoBtn" disabled title="Undo last death recorded">Undo death</button>
+  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:#aaa;flex-shrink:0;margin-left:4px">
+    <input type="checkbox" id="globalLosses" onchange="toggleLosses()" style="accent-color:#e05555">
+    Count losses
+  </label>
   <button class="btn" id="exportBtn" onclick="exportData()">Export save.json</button>
   <button class="btn b" id="pushBtn" onclick="pushToGitHub()" title="Push save.json to GitHub">Push to GitHub</button>
   <button class="btn" onclick="showTokenModal()" title="Set GitHub token">⚙ Token</button>
@@ -250,13 +254,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="a-title">Deaths per trainer — stacked by attempt</div>
     <div class="a-row">
       <div class="a-panel grow">
-        <div class="a-panel-head" id="stackedHead" style="display:flex;align-items:center;gap:12px">
-          <span>Only trainers reached in at least one attempt are shown.</span>
-          <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:#aaa;margin-left:auto;flex-shrink:0">
-            <input type="checkbox" id="stackedLosses" onchange="renderStackedChart()" style="accent-color:#e05555">
-            Count losses as full party wipes (default ×6, exceptions in trainers.js)
-          </label>
-        </div>
+        <div class="a-panel-head" id="stackedHead">Only trainers reached in at least one attempt are shown.</div>
         <div class="a-panel-body">
           <div class="a-scroll">
             <div class="a-chart-inner" id="stackedInner">
@@ -595,9 +593,38 @@ function updateSaveIndicator(saved){
 function getActive(){ return state.attempts.find(a=>a.id===state.activeId)||null; }
 function selectAttempt(id){ state.activeId=id; saveState(); render(); scrollToCurrent(); }
 
+let countLossesGlobal=false;
+
+function toggleLosses(){
+  countLossesGlobal=document.getElementById('globalLosses').checked;
+  if(currentPage==='stacked') renderStackedChart();
+  else if(currentPage==='avg') renderAvgChart();
+  else if(currentPage==='pace') renderPaceChart();
+  else if(currentPage==='heatmap') renderHeatmap();
+  else if(currentPage==='progress') renderProgress();
+  else if(currentPage==='breakdown') renderBdTable();
+  else if(currentPage==='tracker') updateChart();
+}
+
+function getPartySize(a, i){
+  if(a.ended&&a.endedAtIndex===i&&a.partyAtEnd) return a.partyAtEnd;
+  const name=TRAINERS[i]?.n||'';
+  return (typeof PARTY_SIZE_EXCEPTIONS!=='undefined'&&PARTY_SIZE_EXCEPTIONS[name])||6;
+}
+
+function effectiveDeaths(a, i){
+  if(a.ended&&a.endedAtIndex===i) return countLossesGlobal ? getPartySize(a,i) : 0;
+  return a.deaths[i]||0;
+}
+
 function cumDeaths(attempt, upTo){
   let s=0; for(let i=0;i<=upTo&&i<attempt.deaths.length;i++) s+=attempt.deaths[i]; return s;
 }
+
+function cumDeathsEff(attempt, upTo){
+  let s=0; for(let i=0;i<=upTo&&i<TRAINERS.length;i++) s+=effectiveDeaths(attempt,i); return s;
+}
+
 
 // ─────────────────────────────────────────────────────────────────
 // ACTIONS
@@ -759,7 +786,8 @@ function toggleCustomAttempt(id){
 
 function buildDataset(attempt, idx){
   const endIdx=attempt.ended ? Math.max(-1, attempt.endedAtIndex-1) : attempt.currentIndex;
-  const data=TRAINERS.map((_,i)=> i<=endIdx ? cumDeaths(attempt,i) : null);
+  const lastIdx=countLossesGlobal ? (attempt.ended ? attempt.endedAtIndex : attempt.currentIndex) : endIdx;
+  const data=TRAINERS.map((_,i)=> i<=lastIdx ? cumDeathsEff(attempt,i) : null);
   const col=ATT_COLORS[idx%ATT_COLORS.length];
   return {label:attempt.label,data,borderColor:col,backgroundColor:col,
     borderWidth:attempt.ended?1.5:2.5,pointRadius:1.5,pointHoverRadius:5,tension:0.1,spanGaps:false};
@@ -889,7 +917,7 @@ function renderStats(){
       state.attempts.forEach(att=>{
         if(att.id===a.id) return;
         const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
-        if(i<=endIdx) min=Math.min(min, cumDeaths(att,i));
+        if(i<=endIdx) min=Math.min(min, cumDeathsEff(att,i));
       });
       return min===Infinity?null:min;
     });
@@ -1217,8 +1245,9 @@ function trainerStats(){
   return TRAINERS.map((t,i)=>{
     let total=0, reached=0, passed=0;
     state.attempts.forEach(a=>{
-      const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
-      if(i<=endIdx){ reached++; total+=a.deaths[i]; }
+      const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+      const lostHere=a.ended&&a.endedAtIndex===i;
+      if(i<=endIdx||lostHere){ reached++; total+=effectiveDeaths(a,i); }
       if(i<endIdx) passed++;
     });
     return {i, n:t.n, s:t.s, total, reached, passed, avg: reached>0 ? total/reached : 0};
@@ -1258,12 +1287,7 @@ function renderStackedChart(){
     const col=ATT_COLORS[ai%ATT_COLORS.length];
     return {
       label:a.label,
-      data:stats.map(x=>{
-        const lostHere=a.ended&&a.endedAtIndex===x.i;
-        if(lostHere) return countLosses?(a.partyAtEnd||defaultParty(x)):0;
-        if(x.i<=endIdx) return a.deaths[x.i];
-        return 0;
-      }),
+      data:stats.map(x=>effectiveDeaths(a,x.i)),
       backgroundColor:col+'cc',
       borderColor:col,
       borderWidth:0,
@@ -1442,7 +1466,7 @@ function renderPaceChart(){
     let min=Infinity;
     state.attempts.forEach(a=>{
       const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
-      if(i<=endIdx) min=Math.min(min, cumDeaths(a,i));
+      if(i<=endIdx) min=Math.min(min, cumDeathsEff(a,i));
     });
     return min===Infinity ? null : min;
   });
@@ -1461,7 +1485,7 @@ function renderPaceChart(){
       label:a.label,
       data:reachedIndices.map(i=>{
         if(i>endIdx) return null;
-        return cumDeaths(a,i) - minCum[i];
+        return cumDeathsEff(a,i) - minCum[i];
       }),
       borderColor:col,
       backgroundColor:col,
@@ -2107,11 +2131,11 @@ function renderBdTable(){
       const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
       const lostHere=a.ended&&a.endedAtIndex===i;
       if(i>endIdx&&!lostHere) return null;
-      const after=(!lostHere&&endIdx>i)?cumDeaths(a,endIdx)-cumDeaths(a,i):null;
+      const after=(!lostHere&&endIdx>i)?cumDeathsEff(a,endIdx)-cumDeathsEff(a,i):null;
       return {
-        cumUp: cumDeaths(a,i),
+        cumUp: cumDeathsEff(a,i),
         on: a.deaths[i],
-        before: cumDeaths(a,i)-a.deaths[i],
+        before: cumDeathsEff(a,i)-a.deaths[i],
         after,
         lost: lostHere,
       };
