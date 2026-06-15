@@ -11332,9 +11332,9 @@
     {
       "id": 28,
       "label": "Attempt 28",
-      "ended": false,
-      "endedAtIndex": null,
-      "currentIndex": 118,
+      "ended": true,
+      "endedAtIndex": 120,
+      "currentIndex": 120,
       "deaths": [
         0,
         0,
@@ -11454,7 +11454,7 @@
         1,
         0,
         1,
-        0,
+        2,
         0,
         0,
         0,
@@ -11745,7 +11745,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "partyAtEnd": 5
     }
   ],
   "nextId": 29,
