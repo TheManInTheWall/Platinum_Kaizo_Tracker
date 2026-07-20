@@ -12591,7 +12591,7 @@
       "label": "Attempt 31",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 81,
+      "currentIndex": 85,
       "deaths": [
         0,
         0,
@@ -12676,7 +12676,7 @@
         0,
         0,
         0,
-        0,
+        1,
         0,
         0,
         0,
