@@ -470,9 +470,12 @@ const PARTY_SIZE_EXCEPTIONS = {
 // enabled: whether shown by default (can toggle in the UI)
 // ─────────────────────────────────────────────────────────────────
 const SECTIONS = [
-  { name:"Roark Gym",    from:"Worker Mason (Gauntlet Start)*", to:"Leader Roark",    color:"#BA7517", enabled:true  },
-  { name:"Gardenia Gym", from:"Galactic Venus & Galactic Luna", to:"Leader Gardenia", color:"#3B7A1A", enabled:true  },
-  { name:"Fantina Gym",  from:"Galactic Amalthia (Gauntlet Start)*", to:"Leader Fantina", color:"#8B3FA8", enabled:true  },
+  { name:"Roark Gym",    from:"Scientist Jonathan", to:"Leader Roark",    color:"#BA7517", enabled:true  },
+  { name:"Gardenia Gym", from:"Lass Caroline", to:"Leader Gardenia", color:"#3B7A1A", enabled:true  },
+  { name: "Fantina Gym", from: "Ninja Boy Donny (FOG)", to: "Leader Fantina", color: "4A6FA5", enabled: true },
+  { name:"Eterna Forest",  from:"Galactic Ophelia &/ Galactic Bianca", to:"Galactic Terra & Galactic Luna", color:"C77B3F", enabled:true  },
+  { name:"Bycicle Road",  from:"Cyclist Axel & Cyclist John", to:"Cyclist Karen", color:"5A8F5A", enabled:true  },
+  { name:"The Blender",  from:"Before First Battle", to:"Leader Roark", color:"9B4B7A", enabled:true  },
 ];
 
 // ─────────────────────────────────────────────────────────────────
