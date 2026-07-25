@@ -453,7 +453,56 @@ const BOSSES = [
   "Cyclist Karen",
 ];
 
-// — add new splits here when you add new split names
+// ─────────────────────────────────────────────────────────────────
+// PARTY SIZE EXCEPTIONS
+// Default party size for loss calculation is 6.
+// Add entries here for trainers where fewer Pokémon are allowed.
+// Format: "Exact trainer name": partySize
+// ─────────────────────────────────────────────────────────────────
+const PARTY_SIZE_EXCEPTIONS = {
+  // "Worker Mason (Gauntlet Start)*": 1,
+  // "Gambler John Keating (SUPERBOSS)*": 3,
+};
+
+// ─────────────────────────────────────────────────────────────────
+// SECTIONS — coloured background bands on the Sections chart
+// from/to are exact trainer names (both inclusive)
+// enabled: whether shown by default (can toggle in the UI)
+// ─────────────────────────────────────────────────────────────────
+const SECTIONS = [
+  { name:"Roark Gym",    from:"Worker Mason (Gauntlet Start)*", to:"Leader Roark",    color:"#BA7517", enabled:true  },
+  { name:"Gardenia Gym", from:"Galactic Venus & Galactic Luna", to:"Leader Gardenia", color:"#3B7A1A", enabled:true  },
+  { name:"Fantina Gym",  from:"Galactic Amalthia (Gauntlet Start)*", to:"Leader Fantina", color:"#8B3FA8", enabled:true  },
+];
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION BOSSES — shown as solid horizontal lines on the Sections chart
+// ─────────────────────────────────────────────────────────────────
+const SECTION_BOSSES = [
+  "Leader Roark",
+  "Leader Gardenia",
+  "Leader Fantina",
+  "Leader Maylene",
+  "Leader Crasher Wake",
+  "Leader Byron",
+  "Leader Candice (HAIL)",
+  "Leader Volkner (Double Battle)",
+  "Leader Cyrus (Trick Room)",
+];
+
+// ─────────────────────────────────────────────────────────────────
+// SECTION MINIBOSSES — shown as smaller dashed horizontal lines
+// ─────────────────────────────────────────────────────────────────
+const SECTION_MINIBOSSES = [
+  "Barry #2",
+  "Commander Mars (DOUBLE)",
+  "Commander Jupiter",
+  "Commander Saturn",
+  "Gambler John Keating (SUPERBOSS)*",
+];
+
+// ─────────────────────────────────────────────────────────────────
+// SPLIT COLOURS — add new splits here when you add new split names
 // ─────────────────────────────────────────────────────────────────
 const SPLITS_CFG = {
   "Roark":      {color:"#BA7517", bg:"rgba(186,117,23,0.2)"},

@@ -132,6 +132,11 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .bd-split-hdr{padding:4px 12px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#333;background:#0a0a0a;border-bottom:1px solid #1a1a1a}
 .bd-heat{width:22px;height:22px;text-align:center;font-size:8px;font-weight:600;border:1px solid #1a1a1a;vertical-align:middle}
 
+/* ── section toggles ── */
+.sec-chip{padding:3px 9px;border-radius:20px;font-size:10px;cursor:pointer;border:1px solid #383838;background:#1e1e1e;color:#666;white-space:nowrap;flex-shrink:0}
+.sec-chip.on{color:#fff;font-weight:500}
+
+
 
 /* ── consistency / pb tables ── */
 .data-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
@@ -172,6 +177,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 
 <div class="navtabs">
   <div class="navtab active" id="tab-tracker" onclick="setPage('tracker')">Tracker</div>
+  <div class="navtab" id="tab-sections" onclick="setPage('sections')">Sections</div>
   <div class="navtab" id="tab-stacked" onclick="setPage('stacked')">Deaths per trainer</div>
   <div class="navtab" id="tab-avg" onclick="setPage('avg')">Average deaths</div>
   <div class="navtab" id="tab-pace" onclick="setPage('pace')">Pace</div>
@@ -246,6 +252,43 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
         <canvas id="mainChart"></canvas>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Sections ── -->
+<div class="page" id="page-sections" style="flex-direction:column;overflow:hidden">
+  <!-- sub-tab bar -->
+  <div style="display:flex;gap:0;border-bottom:1px solid #2a2a2a;flex-shrink:0;background:#0e0e0e">
+    <div class="navtab active" id="subtab-schart" onclick="setSectionTab('schart')" style="font-size:11px;padding:6px 16px">Chart</div>
+    <div class="navtab" id="subtab-sstats" onclick="setSectionTab('sstats')" style="font-size:11px;padding:6px 16px">Stats</div>
+    <!-- section toggles -->
+    <div id="sectionToggles" style="display:flex;gap:6px;align-items:center;padding:0 14px;flex:1;overflow-x:auto"></div>
+  </div>
+
+  <!-- chart sub-page -->
+  <div id="spage-schart" style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 14px">
+    <div style="flex:1;overflow:auto;position:relative">
+      <div id="sectionsChartInner" style="position:relative">
+        <canvas id="sectionsChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- stats sub-page -->
+  <div id="spage-sstats" style="display:none;flex:1;overflow-y:auto;padding:12px 14px">
+    <table class="data-table" style="max-width:800px" id="sectionsStatsTable">
+      <thead><tr>
+        <th>Section</th>
+        <th>Runs started</th>
+        <th>Runs cleared</th>
+        <th>Clear %</th>
+        <th>Avg deaths</th>
+        <th>Min</th>
+        <th>Max</th>
+        <th>Total deaths</th>
+      </tr></thead>
+      <tbody id="sectionsStatsBody"></tbody>
+    </table>
   </div>
 </div>
 
@@ -1231,7 +1274,7 @@ function importData(){
 // PAGE SWITCHING
 // ─────────────────────────────────────────────────────────────────
 let currentPage='tracker';
-let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null, progressChartInst=null;
+let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null, progressChartInst=null, sectionsChartInst=null;
 
 function setPage(p){
   currentPage=p;
@@ -1239,7 +1282,8 @@ function setPage(p){
   document.querySelectorAll('.navtab').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('tab-'+p).classList.add('active');
-  if(p==='stacked') renderStackedChart();
+  if(p==='sections'){ renderSectionToggles(); renderSectionsChart(); renderSectionsStats(); }
+  else if(p==='stacked') renderStackedChart();
   else if(p==='avg') renderAvgChart();
   else if(p==='pace') renderPaceChart();
   else if(p==='heatmap') renderHeatmap();
@@ -1248,6 +1292,15 @@ function setPage(p){
   else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
   else if(p==='bosses') renderBosses();
   else if(p==='insights') renderInsights();
+}
+
+function setSectionTab(t){
+  document.getElementById('spage-schart').style.display=t==='schart'?'flex':'none';
+  document.getElementById('spage-sstats').style.display=t==='sstats'?'block':'none';
+  document.getElementById('subtab-schart').classList.toggle('active',t==='schart');
+  document.getElementById('subtab-sstats').classList.toggle('active',t==='sstats');
+  if(t==='schart') renderSectionsChart();
+  else renderSectionsStats();
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -2284,6 +2337,224 @@ function renderBosses(){
   }).filter(Boolean);
 
   body.innerHTML=rows.join('')||'<tr><td colspan="6" style="color:#444;padding:12px">None of the listed bosses have been reached yet.</td></tr>';
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTIONS
+// ─────────────────────────────────────────────────────────────────
+function getSectionToggleState(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('section_toggles')||'{}');
+    const out={};
+    (typeof SECTIONS!=='undefined'?SECTIONS:[]).forEach(s=>{
+      out[s.name]=saved.hasOwnProperty(s.name)?saved[s.name]:s.enabled;
+    });
+    return out;
+  }catch(e){ return {}; }
+}
+function saveSectionToggleState(obj){
+  localStorage.setItem('section_toggles',JSON.stringify(obj));
+}
+function nameToTrainerIdx(name){
+  return TRAINERS.findIndex(t=>t.n===name);
+}
+
+function renderSectionToggles(){
+  const el=document.getElementById('sectionToggles');
+  if(!el) return;
+  if(typeof SECTIONS==='undefined'||!SECTIONS.length){
+    el.innerHTML='<span style="color:#444;font-size:10px">No SECTIONS defined in trainers.js</span>';
+    return;
+  }
+  const toggles=getSectionToggleState();
+  el.innerHTML=SECTIONS.map(s=>{
+    const on=toggles[s.name];
+    return `<span class="sec-chip ${on?'on':''}" style="${on?`background:${s.color}33;border-color:${s.color};color:${s.color}`:''}" onclick="toggleSection('${s.name.replace(/'/g,"\\'")}')">${s.name}</span>`;
+  }).join('');
+}
+
+function toggleSection(name){
+  const toggles=getSectionToggleState();
+  toggles[name]=!toggles[name];
+  saveSectionToggleState(toggles);
+  renderSectionToggles();
+  renderSectionsChart();
+  renderSectionsStats();
+}
+
+function renderSectionsChart(){
+  if(sectionsChartInst){ sectionsChartInst.destroy(); sectionsChartInst=null; }
+  const canvas=document.getElementById('sectionsChart');
+  if(!canvas) return;
+  if(!state.attempts.length){
+    canvas.style.display='none';
+    return;
+  }
+  canvas.style.display='';
+
+  const labels=TRAINERS.map((t,i)=>`${i+1}. ${t.n}`);
+  const datasets=state.attempts.map((a,idx)=>{
+    const endIdx=a.ended?Math.max(-1,a.endedAtIndex-1):a.currentIndex;
+    const lastIdx=countLossesGlobal?(a.ended?a.endedAtIndex:a.currentIndex):endIdx;
+    const data=TRAINERS.map((_,i)=> i<=lastIdx ? cumDeathsEff(a,i) : null);
+    const col=ATT_COLORS[idx%ATT_COLORS.length];
+    return {
+      label:a.label, data,
+      borderColor:col, backgroundColor:col,
+      borderWidth:a.ended?1.5:2.5,
+      pointRadius:1.5, pointHoverRadius:5, tension:0.1, spanGaps:false,
+    };
+  });
+
+  const toggles=getSectionToggleState();
+  const activeSections=(typeof SECTIONS!=='undefined'?SECTIONS:[]).filter(s=>toggles[s.name]).map(s=>{
+    const from=nameToTrainerIdx(s.from), to=nameToTrainerIdx(s.to);
+    return {...s, from, to};
+  }).filter(s=>s.from>=0&&s.to>=0);
+
+  const bossIdxs=(typeof SECTION_BOSSES!=='undefined'?SECTION_BOSSES:[]).map(n=>({n,i:nameToTrainerIdx(n)})).filter(x=>x.i>=0);
+  const minibossIdxs=(typeof SECTION_MINIBOSSES!=='undefined'?SECTION_MINIBOSSES:[]).map(n=>({n,i:nameToTrainerIdx(n)})).filter(x=>x.i>=0);
+
+  const sectionsPlugin={
+    id:'sectionsBg',
+    beforeDraw(chart){
+      const {ctx,chartArea,scales}=chart;
+      if(!chartArea) return;
+      const ys=scales.y;
+      const step=ys.getPixelForValue(1)-ys.getPixelForValue(0);
+      const half=Math.abs(step)/2;
+      ctx.save();
+      activeSections.forEach(s=>{
+        const y0=ys.getPixelForValue(s.from)-half;
+        const y1=ys.getPixelForValue(s.to)+half;
+        ctx.fillStyle=s.color+'22';
+        ctx.fillRect(chartArea.left,Math.min(y0,y1),chartArea.right-chartArea.left,Math.abs(y1-y0));
+        ctx.fillStyle=s.color; ctx.globalAlpha=0.7;
+        ctx.font='bold 10px system-ui'; ctx.textAlign='left';
+        ctx.fillText(s.name,chartArea.left+4,Math.min(y0,y1)+11);
+        ctx.globalAlpha=1;
+      });
+      ctx.restore();
+    },
+    afterDraw(chart){
+      const {ctx,chartArea,scales}=chart;
+      if(!chartArea) return;
+      const ys=scales.y;
+      ctx.save();
+      bossIdxs.forEach(b=>{
+        const y=ys.getPixelForValue(b.i);
+        ctx.strokeStyle='rgba(255,255,255,0.35)';
+        ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.moveTo(chartArea.left,y); ctx.lineTo(chartArea.right,y); ctx.stroke();
+        ctx.fillStyle='rgba(255,255,255,0.6)';
+        ctx.font='9px system-ui'; ctx.textAlign='right';
+        ctx.fillText('👑 '+b.n,chartArea.right-4,y-3);
+      });
+      minibossIdxs.forEach(m=>{
+        const y=ys.getPixelForValue(m.i);
+        ctx.strokeStyle='rgba(255,255,255,0.15)';
+        ctx.lineWidth=1;
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(chartArea.left,y); ctx.lineTo(chartArea.right,y); ctx.stroke();
+        ctx.setLineDash([]);
+      });
+      ctx.restore();
+    }
+  };
+
+  const h=Math.max(600, TRAINERS.length*4);
+  document.getElementById('sectionsChartInner').style.height=h+'px';
+
+  sectionsChartInst=new Chart(canvas,{
+    type:'line',
+    data:{labels, datasets},
+    plugins:[sectionsPlugin],
+    options:{
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false, animation:false,
+      scales:{
+        x:{
+          beginAtZero:true,
+          ticks:{color:'#777',font:{size:10}},
+          grid:{color:'rgba(255,255,255,0.05)'},
+          title:{display:true,text:'cumulative deaths',color:'#555',font:{size:10}},
+        },
+        y:{
+          reverse:true,
+          ticks:{display:false},
+          grid:{color:'rgba(255,255,255,0.03)'},
+        }
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index', intersect:false,
+          backgroundColor:'rgba(16,16,16,0.96)',titleColor:'#eee',bodyColor:'#bbb',
+          borderColor:'rgba(255,255,255,0.12)',borderWidth:1,
+          filter:item=>item.raw!==null,
+          callbacks:{
+            title:items=>`${TRAINERS[items[0].dataIndex].n} [${TRAINERS[items[0].dataIndex].s}]`,
+            label:item=>` ${item.dataset.label}: ${item.raw} deaths`,
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderSectionsStats(){
+  const body=document.getElementById('sectionsStatsBody');
+  if(!body) return;
+  if(typeof SECTIONS==='undefined'||!SECTIONS.length){
+    body.innerHTML='<tr><td colspan="8" style="color:#444;padding:12px">No SECTIONS defined in trainers.js</td></tr>';
+    return;
+  }
+  if(!state.attempts.length){
+    body.innerHTML='<tr><td colspan="8" style="color:#444;padding:12px">No attempts yet.</td></tr>';
+    return;
+  }
+
+  const rows=SECTIONS.map(s=>{
+    const from=nameToTrainerIdx(s.from), to=nameToTrainerIdx(s.to);
+    if(from<0||to<0) return `<tr><td colspan="8" style="color:#555;font-size:11px">${s.name} <span style="color:#444">(from/to name not found)</span></td></tr>`;
+
+    let started=0, cleared=0;
+    const deathTotals=[];
+    state.attempts.forEach(a=>{
+      const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+      const lostAt=a.ended?a.endedAtIndex:null;
+      const reachedStart = endIdx>=from || (lostAt!==null&&lostAt>=from);
+      if(!reachedStart) return;
+      started++;
+      const clearedIt = endIdx>=to;
+      if(clearedIt) cleared++;
+      // sum effective deaths across the range, up to wherever the run got
+      const upTo=Math.min(to, lostAt!==null?lostAt:endIdx);
+      let total=0;
+      for(let i=from;i<=upTo;i++) total+=effectiveDeaths(a,i);
+      deathTotals.push(total);
+    });
+
+    if(!started) return null;
+    const avg=deathTotals.length?Math.round(deathTotals.reduce((s,x)=>s+x,0)/deathTotals.length*100)/100:0;
+    const min=deathTotals.length?Math.min(...deathTotals):0;
+    const max=deathTotals.length?Math.max(...deathTotals):0;
+    const total=deathTotals.reduce((s,x)=>s+x,0);
+    const pct=started?Math.round(cleared/started*100):0;
+
+    return `<tr>
+      <td><span class="split-cell" style="background:${s.color}33;color:${s.color}">${s.name}</span></td>
+      <td>${started}</td>
+      <td>${cleared}</td>
+      <td style="color:${pct>=70?'#59a14f':pct>=40?'#edc948':'#e05555'};font-weight:600">${pct}%</td>
+      <td style="color:#edc948;font-weight:600">${avg}</td>
+      <td style="color:#59a14f">${min}</td>
+      <td style="color:#e05555">${max}</td>
+      <td style="color:#bbb">${total}</td>
+    </tr>`;
+  }).filter(Boolean);
+
+  body.innerHTML=rows.join('')||'<tr><td colspan="8" style="color:#444;padding:12px">None of the defined sections have been started yet.</td></tr>';
 }
 
 document.addEventListener('keydown', e=>{
