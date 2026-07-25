@@ -2392,11 +2392,26 @@ function renderSectionsChart(){
   }
   canvas.style.display='';
 
-  const labels=TRAINERS.map((t,i)=>`${i+1}. ${t.n}`);
+  // Find furthest any attempt has ever reached (including a loss trainer itself)
+  let maxReached=0;
+  state.attempts.forEach(a=>{
+    const idx=a.ended?a.endedAtIndex:a.currentIndex;
+    if(idx>maxReached) maxReached=idx;
+  });
+  // Cap the visible range at the end of whichever split contains that furthest point
+  const furthestSplit=TRAINERS[maxReached]?.s;
+  let capIdx=maxReached;
+  for(let i=maxReached;i<TRAINERS.length;i++){
+    if(TRAINERS[i].s===furthestSplit) capIdx=i; else break;
+  }
+  const visibleCount=capIdx+1;
+  const visibleTrainers=TRAINERS.slice(0,visibleCount);
+
+  const labels=visibleTrainers.map((t,i)=>`${i+1}. ${t.n}`);
   const datasets=state.attempts.map((a,idx)=>{
     const endIdx=a.ended?Math.max(-1,a.endedAtIndex-1):a.currentIndex;
     const lastIdx=countLossesGlobal?(a.ended?a.endedAtIndex:a.currentIndex):endIdx;
-    const data=TRAINERS.map((_,i)=> i<=lastIdx ? cumDeathsEff(a,i) : null);
+    const data=visibleTrainers.map((_,i)=> i<=lastIdx ? cumDeathsEff(a,i) : null);
     const col=ATT_COLORS[idx%ATT_COLORS.length];
     return {
       label:a.label, data,
@@ -2410,10 +2425,10 @@ function renderSectionsChart(){
   const activeSections=(typeof SECTIONS!=='undefined'?SECTIONS:[]).filter(s=>toggles[s.name]).map(s=>{
     const from=nameToTrainerIdx(s.from), to=nameToTrainerIdx(s.to);
     return {...s, from, to};
-  }).filter(s=>s.from>=0&&s.to>=0);
+  }).filter(s=>s.from>=0&&s.to>=0&&s.from<visibleCount);
 
-  const bossIdxs=(typeof SECTION_BOSSES!=='undefined'?SECTION_BOSSES:[]).map(n=>({n,i:nameToTrainerIdx(n)})).filter(x=>x.i>=0);
-  const minibossIdxs=(typeof SECTION_MINIBOSSES!=='undefined'?SECTION_MINIBOSSES:[]).map(n=>({n,i:nameToTrainerIdx(n)})).filter(x=>x.i>=0);
+  const bossIdxs=(typeof SECTION_BOSSES!=='undefined'?SECTION_BOSSES:[]).map(n=>({n,i:nameToTrainerIdx(n)})).filter(x=>x.i>=0&&x.i<visibleCount);
+  const minibossIdxs=(typeof SECTION_MINIBOSSES!=='undefined'?SECTION_MINIBOSSES:[]).map(n=>({n,i:nameToTrainerIdx(n)})).filter(x=>x.i>=0&&x.i<visibleCount);
 
   const sectionsPlugin={
     id:'sectionsBg',
@@ -2425,8 +2440,9 @@ function renderSectionsChart(){
       const half=Math.abs(step)/2;
       ctx.save();
       activeSections.forEach(s=>{
+        const cappedTo=Math.min(s.to,visibleCount-1);
         const y0=ys.getPixelForValue(s.from)-half;
-        const y1=ys.getPixelForValue(s.to)+half;
+        const y1=ys.getPixelForValue(cappedTo)+half;
         ctx.fillStyle=s.color+'22';
         ctx.fillRect(chartArea.left,Math.min(y0,y1),chartArea.right-chartArea.left,Math.abs(y1-y0));
         ctx.fillStyle=s.color; ctx.globalAlpha=0.7;
@@ -2462,7 +2478,7 @@ function renderSectionsChart(){
     }
   };
 
-  const h=Math.max(600, TRAINERS.length*4);
+  const h=Math.max(400, visibleCount*10);
   document.getElementById('sectionsChartInner').style.height=h+'px';
 
   sectionsChartInst=new Chart(canvas,{
