@@ -12589,9 +12589,9 @@
     {
       "id": 31,
       "label": "Attempt 31",
-      "ended": false,
-      "endedAtIndex": null,
-      "currentIndex": 108,
+      "ended": true,
+      "endedAtIndex": 122,
+      "currentIndex": 122,
       "deaths": [
         0,
         0,
@@ -12709,12 +12709,12 @@
         0,
         0,
         0,
+        1,
         0,
         0,
         0,
         0,
-        0,
-        0,
+        1,
         0,
         0,
         0,
@@ -13002,7 +13002,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "partyAtEnd": 6
     }
   ],
   "nextId": 32,
