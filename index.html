@@ -226,6 +226,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <div class="stat-row"><span class="sl">Pace delta</span><span class="sv" id="statPace">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best again at</span><span class="sv" id="statPaceBestAt" style="font-size:9px;color:#7fd97f;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best ever at</span><span class="sv" id="statPaceBestEver" style="font-size:9px;color:#4e79a7;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
+      <button class="btn" id="copyPaceBtn" onclick="copyPaceInfo()" style="width:100%;margin-top:6px;font-size:10px;padding:4px">Copy pace info</button>
       <div class="stat-row"><span class="sl">Remaining</span><span class="sv" id="statRemaining">—</span></div>
       <div class="stat-row"><span class="sl">Total attempts</span><span class="sv" id="statAttempts">—</span></div>
       <div class="stat-row"><span class="sl">All-time deaths</span><span class="sv" id="statAllDeaths">—</span></div>
@@ -246,6 +247,10 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <button class="btn"              id="fFirst5"  onclick="setFilter('first5')" style="font-size:10px;padding:3px 9px">First 5</button>
       <button class="btn"              id="fCustom"  onclick="setFilter('custom')" style="font-size:10px;padding:3px 9px">Custom</button>
       <span id="customHint" style="font-size:10px;color:#555;display:none">— click attempt pills to toggle</span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer;color:#aaa;margin-left:auto;flex-shrink:0">
+        <input type="checkbox" id="capToProgress" checked onchange="toggleCapToProgress()" style="accent-color:#3a6ea5">
+        Cap to current split
+      </label>
     </div>
     <div class="chart-scroll">
       <div class="chart-inner" id="chartInner">
@@ -610,6 +615,23 @@ function showToast(msg, color='#7fd97f'){
   setTimeout(()=>t.remove(),3000);
 }
 
+function copyPaceInfo(){
+  const pace=document.getElementById('statPace')?.textContent?.trim()||'';
+  const bestAt=document.getElementById('statPaceBestAt')?.textContent?.trim()||'';
+  const bestEver=document.getElementById('statPaceBestEver')?.textContent?.trim()||'';
+
+  const lines=[`Pace delta: ${pace}`];
+  if(bestAt&&bestAt!=='—') lines.push(`Best again at: ${bestAt}`);
+  if(bestEver&&bestEver!=='—'&&bestEver!==bestAt) lines.push(`Best ever at: ${bestEver}`);
+
+  const text=lines.join('\n');
+  navigator.clipboard.writeText(text).then(()=>{
+    showToast('Copied pace info','#7fd97f');
+  }).catch(()=>{
+    showToast('Copy failed — clipboard blocked','#e05555');
+  });
+}
+
 let _repoCheckTimer=null;
 function setupRepoCheck(){
   if(_repoCheckTimer){ clearInterval(_repoCheckTimer); _repoCheckTimer=null; }
@@ -752,6 +774,33 @@ document.addEventListener('keydown', e=>{
 // ─────────────────────────────────────────────────────────────────
 // CHART
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// PROGRESS CAP (shared by Tracker and Sections charts)
+// ─────────────────────────────────────────────────────────────────
+let capToProgressGlobal=(localStorage.getItem('cap_to_progress')??'true')==='true';
+
+function toggleCapToProgress(){
+  capToProgressGlobal=document.getElementById('capToProgress').checked;
+  localStorage.setItem('cap_to_progress', String(capToProgressGlobal));
+  initChart();
+}
+
+function getVisibleTrainerCount(){
+  if(!capToProgressGlobal) return TRAINERS.length;
+  if(!state.attempts.length) return TRAINERS.length;
+  let maxReached=0;
+  state.attempts.forEach(a=>{
+    const idx=a.ended?a.endedAtIndex:a.currentIndex;
+    if(idx>maxReached) maxReached=idx;
+  });
+  const furthestSplit=TRAINERS[maxReached]?.s;
+  let capIdx=maxReached;
+  for(let i=maxReached;i<TRAINERS.length;i++){
+    if(TRAINERS[i].s===furthestSplit) capIdx=i; else break;
+  }
+  return capIdx+1;
+}
+
 const bands=(()=>{
   const b=[]; let cur=null,start=0;
   TRAINERS.forEach((t,i)=>{
@@ -767,12 +816,14 @@ const bgPlugin={
     const {ctx,chartArea,scales}=chart;
     if(!chartArea) return;
     const xs=scales.x;
+    const visibleCount=chart.data.labels.length;
     const step=xs.getPixelForValue(1)-xs.getPixelForValue(0);
     const half=step/2;
     ctx.save();
-    bands.forEach(b=>{
+    bands.filter(b=>b.start<visibleCount).forEach(b=>{
+      const end=Math.min(b.end,visibleCount-1);
       const x0=xs.getPixelForValue(b.start)-half;
-      const x1=xs.getPixelForValue(b.end)+half;
+      const x1=xs.getPixelForValue(end)+half;
       const cfg=SPLITS_CFG[b.s]||{bg:'rgba(128,128,128,0.1)',color:'#888'};
       ctx.fillStyle=cfg.bg;
       ctx.fillRect(x0,chartArea.top,x1-x0,chartArea.bottom-chartArea.top);
@@ -828,17 +879,18 @@ function toggleCustomAttempt(id){
   renderPills(); updateChart();
 }
 
-function buildDataset(attempt, idx){
+function buildDataset(attempt, idx, visibleTrainers){
+  const trainersArr=visibleTrainers||TRAINERS;
   const endIdx=attempt.ended ? Math.max(-1, attempt.endedAtIndex-1) : attempt.currentIndex;
   const lastIdx=countLossesGlobal ? (attempt.ended ? attempt.endedAtIndex : attempt.currentIndex) : endIdx;
-  const data=TRAINERS.map((_,i)=> i<=lastIdx ? cumDeathsEff(attempt,i) : null);
+  const data=trainersArr.map((_,i)=> i<=lastIdx ? cumDeathsEff(attempt,i) : null);
   const col=ATT_COLORS[idx%ATT_COLORS.length];
   return {label:attempt.label,data,borderColor:col,backgroundColor:col,
     borderWidth:attempt.ended?1.5:2.5,pointRadius:1.5,pointHoverRadius:5,tension:0.1,spanGaps:false};
 }
 
-function buildFilteredDatasets(){
-  return getFilteredIndices().map(i=>buildDataset(state.attempts[i],i));
+function buildFilteredDatasets(visibleTrainers){
+  return getFilteredIndices().map(i=>buildDataset(state.attempts[i],i,visibleTrainers));
 }
 
 let chart=null;
@@ -846,10 +898,13 @@ let chart=null;
 function initChart(){
   const canvas=document.getElementById('mainChart');
   if(chart){ chart.destroy(); chart=null; }
-  const labels=TRAINERS.map((t,i)=>`${i+1}. ${t.n}`);
+  const visibleCount=getVisibleTrainerCount();
+  const visibleTrainers=TRAINERS.slice(0,visibleCount);
+  const labels=visibleTrainers.map((t,i)=>`${i+1}. ${t.n}`);
+  document.getElementById('chartInner').style.width=Math.max(900, visibleCount*6)+'px';
   chart=new Chart(canvas,{
     type:'line',
-    data:{labels, datasets:buildFilteredDatasets()},
+    data:{labels, datasets:buildFilteredDatasets(visibleTrainers)},
     plugins:[bgPlugin],
     options:{
       responsive:true, maintainAspectRatio:false, animation:false,
@@ -884,7 +939,11 @@ function initChart(){
 
 function updateChart(){
   if(!chart) return initChart();
-  chart.data.datasets=buildFilteredDatasets();
+  const visibleCount=getVisibleTrainerCount();
+  const visibleTrainers=TRAINERS.slice(0,visibleCount);
+  // If visible range changed (progress advanced/reverted), rebuild fully so labels/x-axis match
+  if(chart.data.labels.length!==visibleCount){ initChart(); return; }
+  chart.data.datasets=buildFilteredDatasets(visibleTrainers);
   chart.update('none');
 }
 
@@ -2591,7 +2650,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     e.preventDefault();
     e.currentTarget.scrollLeft += e.deltaY || e.deltaX;
   }, {passive:false});
-  document.getElementById('chartInner').style.width=Math.max(900, TRAINERS.length*6)+'px';
+  document.getElementById('capToProgress').checked=capToProgressGlobal;
   render(); initChart();
 
   const loaded=await loadFromRepo();
