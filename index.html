@@ -1086,16 +1086,24 @@ function renderStats(){
           bestEverEl.textContent='not possible';
           bestEverEl.style.color='#555';
         }
+      }
 
-        // Fights until PB — how many more trainers until we hit new-record territory
-        if(bestEverTrainer!==null){
-          const n=bestEverTrainer-ci;
-          fightsUntilPBEl.textContent=`${n}`;
-        } else if(delta<0){
-          fightsUntilPBEl.textContent='already there';
-        } else {
-          fightsUntilPBEl.textContent='—';
-        }
+      // Fights until PB — trainers needed to reach the point where the
+      // furthest-ever OTHER run currently stands (the trainer it died to,
+      // or the trainer it's currently on if still active). Independent of
+      // pace/deaths — purely about distance reached.
+      let furthestOtherTarget=null;
+      state.attempts.forEach(att=>{
+        if(att.id===a.id) return;
+        const target=att.ended ? att.endedAtIndex : att.currentIndex;
+        if(furthestOtherTarget===null||target>furthestOtherTarget) furthestOtherTarget=target;
+      });
+      if(furthestOtherTarget===null){
+        fightsUntilPBEl.textContent='—';
+      } else {
+        const n=furthestOtherTarget-ci;
+        if(n>0) fightsUntilPBEl.textContent=`${n}`;
+        else fightsUntilPBEl.textContent='already there';
       }
 
       // Next pace death — next trainer, from here on, where the record-pace line itself takes a hit
