@@ -227,7 +227,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <div class="stat-row"><span class="sl" style="font-size:9px">Best again at</span><span class="sv" id="statPaceBestAt" style="font-size:9px;color:#7fd97f;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best ever at</span><span class="sv" id="statPaceBestEver" style="font-size:9px;color:#4e79a7;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Fights until PB</span><span class="sv" id="statFightsUntilPB" style="font-size:9px;color:#4e79a7">—</span></div>
-      <div class="stat-row"><span class="sl" style="font-size:9px">Next death in best pace run</span><span class="sv" id="statNextPaceDeath" style="font-size:9px;color:#edc948;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
+      <div class="stat-row"><span class="sl" style="font-size:9px">Next pace death</span><span class="sv" id="statNextPaceDeath" style="font-size:9px;color:#edc948;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <button class="btn" id="copyPaceBtn" onclick="copyPaceInfo()" style="width:100%;margin-top:6px;font-size:10px;padding:4px">Copy pace info</button>
       <div class="stat-row"><span class="sl">Remaining</span><span class="sv" id="statRemaining">—</span></div>
       <div class="stat-row"><span class="sl">Total attempts</span><span class="sv" id="statAttempts">—</span></div>
@@ -628,7 +628,7 @@ function copyPaceInfo(){
   if(bestAt&&bestAt!=='—') lines.push(`Best again at: ${bestAt}`);
   if(bestEver&&bestEver!=='—'&&bestEver!==bestAt) lines.push(`Best ever at: ${bestEver}`);
   if(fightsUntilPB&&fightsUntilPB!=='—') lines.push(`Fights until PB: ${fightsUntilPB}`);
-  if(nextPaceDeath&&nextPaceDeath!=='—') lines.push(`Next pace death: ${nextPaceDeath}`);
+  if(nextPaceDeath&&nextPaceDeath!=='—') lines.push(`Next death in best pace run: ${nextPaceDeath}`);
 
   const text=lines.join('\n');
   navigator.clipboard.writeText(text).then(()=>{
