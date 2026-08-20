@@ -226,6 +226,8 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <div class="stat-row"><span class="sl">Pace delta</span><span class="sv" id="statPace">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best again at</span><span class="sv" id="statPaceBestAt" style="font-size:9px;color:#7fd97f;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best ever at</span><span class="sv" id="statPaceBestEver" style="font-size:9px;color:#4e79a7;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
+      <div class="stat-row"><span class="sl" style="font-size:9px">Fights until PB</span><span class="sv" id="statFightsUntilPB" style="font-size:9px;color:#4e79a7">—</span></div>
+      <div class="stat-row"><span class="sl" style="font-size:9px">Next pace death</span><span class="sv" id="statNextPaceDeath" style="font-size:9px;color:#edc948;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <button class="btn" id="copyPaceBtn" onclick="copyPaceInfo()" style="width:100%;margin-top:6px;font-size:10px;padding:4px">Copy pace info</button>
       <div class="stat-row"><span class="sl">Remaining</span><span class="sv" id="statRemaining">—</span></div>
       <div class="stat-row"><span class="sl">Total attempts</span><span class="sv" id="statAttempts">—</span></div>
@@ -619,10 +621,14 @@ function copyPaceInfo(){
   const pace=document.getElementById('statPace')?.textContent?.trim()||'';
   const bestAt=document.getElementById('statPaceBestAt')?.textContent?.trim()||'';
   const bestEver=document.getElementById('statPaceBestEver')?.textContent?.trim()||'';
+  const fightsUntilPB=document.getElementById('statFightsUntilPB')?.textContent?.trim()||'';
+  const nextPaceDeath=document.getElementById('statNextPaceDeath')?.textContent?.trim()||'';
 
   const lines=[`Pace delta: ${pace}`];
   if(bestAt&&bestAt!=='—') lines.push(`Best again at: ${bestAt}`);
   if(bestEver&&bestEver!=='—'&&bestEver!==bestAt) lines.push(`Best ever at: ${bestEver}`);
+  if(fightsUntilPB&&fightsUntilPB!=='—') lines.push(`Fights until PB: ${fightsUntilPB}`);
+  if(nextPaceDeath&&nextPaceDeath!=='—') lines.push(`Next pace death: ${nextPaceDeath}`);
 
   const text=lines.join('\n');
   navigator.clipboard.writeText(text).then(()=>{
@@ -1009,6 +1015,8 @@ function renderStats(){
 
   const bestAtEl=document.getElementById('statPaceBestAt');
   const bestEverEl=document.getElementById('statPaceBestEver');
+  const fightsUntilPBEl=document.getElementById('statFightsUntilPB');
+  const nextPaceDeathEl=document.getElementById('statNextPaceDeath');
 
   if(a){
     const ci=a.currentIndex;
@@ -1032,45 +1040,78 @@ function renderStats(){
       paceEl.textContent='only run'; paceEl.style.color='';
       bestAtEl.textContent='—';
       bestEverEl.textContent='—';
+      fightsUntilPBEl.textContent='—';
+      nextPaceDeathEl.textContent='—';
     } else {
       const delta=myCum-bestCumHere;
       if(delta===0){ paceEl.textContent='on best pace'; paceEl.style.color='#7fd97f'; }
       else if(delta>0){ paceEl.textContent=`+${delta} behind`; paceEl.style.color=delta>5?'#e05555':'#edc948'; }
       else { paceEl.textContent=`${Math.abs(delta)} ahead`; paceEl.style.color='#7fd97f'; }
 
-      // "Best again at" — first future trainer where best-ever cum >= myCum
-      // (assuming 0 deaths from here, my cum stays myCum; if best is >= myCum I'm on pace)
-      let bestAgainTrainer=null;
-      for(let j=ci+1;j<TRAINERS.length;j++){
-        const bc=minCumByIdx[j];
-        if(bc!==null && myCum<=bc){ bestAgainTrainer=j; break; }
-      }
-      if(bestAgainTrainer!==null){
-        bestAtEl.textContent=`#${bestAgainTrainer+1} ${TRAINERS[bestAgainTrainer].n}`;
-        bestAtEl.style.color='#7fd97f';
-      } else if(delta<=0){
-        bestAtEl.textContent='already ahead';
-        bestAtEl.style.color='#7fd97f';
+      if(delta===0){
+        // Already exactly on best pace — nothing to "get back to"
+        bestAtEl.textContent='—';
+        bestEverEl.textContent='—';
       } else {
-        bestAtEl.textContent='not possible';
-        bestAtEl.style.color='#555';
+        // "Best again at" — first future trainer where best-ever cum >= myCum
+        let bestAgainTrainer=null;
+        for(let j=ci+1;j<TRAINERS.length;j++){
+          const bc=minCumByIdx[j];
+          if(bc!==null && myCum<=bc){ bestAgainTrainer=j; break; }
+        }
+        if(bestAgainTrainer!==null){
+          bestAtEl.textContent=`#${bestAgainTrainer+1} ${TRAINERS[bestAgainTrainer].n}`;
+          bestAtEl.style.color='#7fd97f';
+        } else if(delta<=0){
+          bestAtEl.textContent='already ahead';
+          bestAtEl.style.color='#7fd97f';
+        } else {
+          bestAtEl.textContent='not possible';
+          bestAtEl.style.color='#555';
+        }
+
+        // "Best ever at" — first future trainer where, with 0 deaths, this run is strictly ahead of all others
+        let bestEverTrainer=null;
+        for(let j=ci+1;j<TRAINERS.length;j++){
+          const bc=minCumByIdx[j];
+          if(bc!==null && myCum<bc){ bestEverTrainer=j; break; }
+        }
+        if(bestEverTrainer!==null){
+          bestEverEl.textContent=`#${bestEverTrainer+1} ${TRAINERS[bestEverTrainer].n}`;
+          bestEverEl.style.color='#4e79a7';
+        } else if(delta<0){
+          bestEverEl.textContent='already best ever';
+          bestEverEl.style.color='#4e79a7';
+        } else {
+          bestEverEl.textContent='not possible';
+          bestEverEl.style.color='#555';
+        }
+
+        // Fights until PB — how many more trainers until we hit new-record territory
+        if(bestEverTrainer!==null){
+          const n=bestEverTrainer-ci;
+          fightsUntilPBEl.textContent=`${n}`;
+        } else if(delta<0){
+          fightsUntilPBEl.textContent='already there';
+        } else {
+          fightsUntilPBEl.textContent='—';
+        }
       }
 
-      // "Best ever at" — first future trainer where, with 0 deaths, this run is strictly ahead of all others
-      let bestEverTrainer=null;
+      // Next pace death — next trainer, from here on, where the record-pace line itself takes a hit
+      // (monotonic minCumByIdx: an increase means the best-ever composite died there)
+      let nextPaceDeathTrainer=null;
+      let prevKnown=bestCumHere;
       for(let j=ci+1;j<TRAINERS.length;j++){
         const bc=minCumByIdx[j];
-        if(bc!==null && myCum<bc){ bestEverTrainer=j; break; }
+        if(bc===null) continue;
+        if(bc>prevKnown){ nextPaceDeathTrainer=j; break; }
+        prevKnown=bc;
       }
-      if(bestEverTrainer!==null){
-        bestEverEl.textContent=`#${bestEverTrainer+1} ${TRAINERS[bestEverTrainer].n}`;
-        bestEverEl.style.color='#4e79a7';
-      } else if(delta<0){
-        bestEverEl.textContent='already best ever';
-        bestEverEl.style.color='#4e79a7';
+      if(nextPaceDeathTrainer!==null){
+        nextPaceDeathEl.textContent=`#${nextPaceDeathTrainer+1} ${TRAINERS[nextPaceDeathTrainer].n}`;
       } else {
-        bestEverEl.textContent='not possible';
-        bestEverEl.style.color='#555';
+        nextPaceDeathEl.textContent='never (record run)';
       }
     }
 
@@ -1097,6 +1138,8 @@ function renderStats(){
     document.getElementById('statPace').style.color='';
     bestAtEl.textContent='—';
     bestEverEl.textContent='—';
+    fightsUntilPBEl.textContent='—';
+    nextPaceDeathEl.textContent='—';
     document.getElementById('statRemaining').textContent='—';
   }
 }
