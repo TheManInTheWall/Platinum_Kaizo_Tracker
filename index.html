@@ -227,7 +227,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <div class="stat-row"><span class="sl" style="font-size:9px">Best again at</span><span class="sv" id="statPaceBestAt" style="font-size:9px;color:#7fd97f;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Best ever at</span><span class="sv" id="statPaceBestEver" style="font-size:9px;color:#4e79a7;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <div class="stat-row"><span class="sl" style="font-size:9px">Fights until PB</span><span class="sv" id="statFightsUntilPB" style="font-size:9px;color:#4e79a7">—</span></div>
-      <div class="stat-row"><span class="sl" style="font-size:9px">Next pace death</span><span class="sv" id="statNextPaceDeath" style="font-size:9px;color:#edc948;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
+      <div class="stat-row"><span class="sl" style="font-size:9px">Next death in best pace run</span><span class="sv" id="statNextPaceDeath" style="font-size:9px;color:#edc948;text-align:right;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span></div>
       <button class="btn" id="copyPaceBtn" onclick="copyPaceInfo()" style="width:100%;margin-top:6px;font-size:10px;padding:4px">Copy pace info</button>
       <div class="stat-row"><span class="sl">Remaining</span><span class="sv" id="statRemaining">—</span></div>
       <div class="stat-row"><span class="sl">Total attempts</span><span class="sv" id="statAttempts">—</span></div>
@@ -1048,8 +1048,8 @@ function renderStats(){
       else if(delta>0){ paceEl.textContent=`+${delta} behind`; paceEl.style.color=delta>5?'#e05555':'#edc948'; }
       else { paceEl.textContent=`${Math.abs(delta)} ahead`; paceEl.style.color='#7fd97f'; }
 
-      if(delta===0){
-        // Already exactly on best pace — nothing to "get back to"
+      if(delta<=0){
+        // Already tied or ahead — nothing to "get back to"
         bestAtEl.textContent='—';
         bestEverEl.textContent='—';
       } else {
@@ -1061,9 +1061,6 @@ function renderStats(){
         }
         if(bestAgainTrainer!==null){
           bestAtEl.textContent=`#${bestAgainTrainer+1} ${TRAINERS[bestAgainTrainer].n}`;
-          bestAtEl.style.color='#7fd97f';
-        } else if(delta<=0){
-          bestAtEl.textContent='already ahead';
           bestAtEl.style.color='#7fd97f';
         } else {
           bestAtEl.textContent='not possible';
@@ -1078,9 +1075,6 @@ function renderStats(){
         }
         if(bestEverTrainer!==null){
           bestEverEl.textContent=`#${bestEverTrainer+1} ${TRAINERS[bestEverTrainer].n}`;
-          bestEverEl.style.color='#4e79a7';
-        } else if(delta<0){
-          bestEverEl.textContent='already best ever';
           bestEverEl.style.color='#4e79a7';
         } else {
           bestEverEl.textContent='not possible';
