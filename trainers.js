@@ -139,8 +139,7 @@ const TRAINERS = [
 {n:"Roughneck Magnus",s:"Maylene"},
 {n:"Leader Maylene",s:"Maylene"},
 // ── Wake ───────────────────────────────────────────────
-{n:"Psychic Abigail (MULTI BATTLE)",s:"Wake"},
-{n:"Psychic Mitchell (MULTI BATTLE)",s:"Wake"},
+{n:"Psychic Abigail & Psychic Mitchell",s:"Wake"},
 {n:"Gambler Carlos",s:"Wake"},
 {n:"Ruin Maniac Bryan",s:"Wake"},
 {n:"Collector Ripper",s:"Wake"},
