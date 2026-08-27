@@ -59,6 +59,11 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .ti-d{font-weight:600;font-size:10px;min-width:14px;text-align:right}
 .ti-d.has{color:#e05555}
 .ti-d.nil{color:#333}
+.ti-d.skip{color:#666;font-style:italic;font-weight:400;font-size:9px}
+.ti.skipped{background:repeating-linear-gradient(135deg,#1a1a1a,#1a1a1a 6px,#161616 6px,#161616 12px)}
+.ti.skipped .ti-name{color:#666;text-decoration:line-through;text-decoration-color:#444}
+.ti-skip{font-size:11px;color:#444;cursor:pointer;flex-shrink:0;padding:0 2px;line-height:1}
+.ti-skip:hover{color:#aaa}
 
 /* ── chart area ── */
 .chart-area{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 14px}
@@ -684,6 +689,20 @@ function getPartySize(a, i){
   return (typeof PARTY_SIZE_EXCEPTIONS!=='undefined'&&PARTY_SIZE_EXCEPTIONS[name])||6;
 }
 
+function isSkipped(a, i){
+  return !!(a.skipped && a.skipped.includes(i));
+}
+
+function toggleSkip(i){
+  const a=getActive(); if(!a) return;
+  if(i>=a.currentIndex) return; // only trainers strictly before the current position can be marked skipped
+  if(!a.skipped) a.skipped=[];
+  const idx=a.skipped.indexOf(i);
+  if(idx>=0) a.skipped.splice(idx,1);
+  else a.skipped.push(i);
+  saveState(); render();
+}
+
 function effectiveDeaths(a, i){
   if(a.ended&&a.endedAtIndex===i) return countLossesGlobal ? getPartySize(a,i) : 0;
   return a.deaths[i]||0;
@@ -1158,17 +1177,24 @@ function renderTrainerList(){
   const el=document.getElementById('trainerList');
   el.innerHTML=TRAINERS.map((t,i)=>{
     let cls='ti';
+    const skipped=a?isSkipped(a,i):false;
     if(a){
       if(i===a.currentIndex) cls+=' cur';
       else if(i<a.currentIndex) cls+=' done';
       else cls+=' todo';
     } else cls+=' todo';
+    if(skipped) cls+=' skipped';
     const cfg=SPLITS_CFG[t.s]||{color:'#666'};
     const d=a?a.deaths[i]:0;
-    return `<div class="${cls}" id="ti-${i}" onclick="jumpToTrainer(${i})" title="Jump to ${t.n}">
+    const canToggle=a&&i<a.currentIndex;
+    const skipBtn=canToggle
+      ?`<span class="ti-skip" title="${skipped?'Mark as fought':'Mark as NOT fought (skipped)'}" onclick="event.stopPropagation();toggleSkip(${i})">${skipped?'⊘':'○'}</span>`
+      :'';
+    return `<div class="${cls}" id="ti-${i}" onclick="jumpToTrainer(${i})" title="${skipped?'SKIPPED — not actually fought. ':''}Jump to ${t.n}">
       <span class="ti-dot" style="background:${cfg.color}"></span>
       <span class="ti-name">${t.n}</span>
-      <span class="ti-d ${d>0?'has':'nil'}">${d>0?d:'—'}</span>
+      ${skipBtn}
+      <span class="ti-d ${skipped?'skip':(d>0?'has':'nil')}">${skipped?'skip':(d>0?d:'—')}</span>
     </div>`;
   }).join('');
 }
@@ -1416,6 +1442,7 @@ function trainerStats(){
   return TRAINERS.map((t,i)=>{
     let total=0, reached=0, passed=0;
     state.attempts.forEach(a=>{
+      if(isSkipped(a,i)) return;
       const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
       const lostHere=a.ended&&a.endedAtIndex===i;
       if(i<=endIdx||lostHere){ reached++; total+=effectiveDeaths(a,i); }
@@ -1431,6 +1458,7 @@ function splitStats(){
     const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
     TRAINERS.forEach((t,i)=>{
       if(i>endIdx) return;
+      if(isSkipped(a,i)) return;
       if(!byS[t.s]) byS[t.s]={deaths:0, count:0};
       byS[t.s].deaths+=a.deaths[i];
       byS[t.s].count++;
@@ -2118,6 +2146,7 @@ function renderHeatmap(){
     const cells=attempts.map(a=>{
       const end=a.ended?a.endedAtIndex-1:a.currentIndex;
       if(i>end) return `<td style="background:#111;border-color:#161616"></td>`;
+      if(isSkipped(a,i)) return `<td style="background:repeating-linear-gradient(135deg,#2a2410,#2a2410 4px,#1a1810 4px,#1a1810 8px);color:#a89050;font-size:8px" title="${t.n} / ${a.label}: not fought (skipped)">S</td>`;
       const d=a.deaths[i];
       const bg=cellColor(d);
       const fg=d===0?'#333':(d/maxVal>0.5?'#fff':'#111');
@@ -2299,6 +2328,7 @@ function renderBdTable(){
     const cfg=SPLITS_CFG[t.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
 
     const attData=state.attempts.map(a=>{
+      if(isSkipped(a,i)) return null;
       const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
       const lostHere=a.ended&&a.endedAtIndex===i;
       if(i>endIdx&&!lostHere) return null;
@@ -2334,7 +2364,10 @@ function renderBdTable(){
 
     const heatCells=state.attempts.map((a,ai)=>{
       const d=attData[ai];
-      if(d===null) return `<td class="bd-heat" style="background:#111;border-color:#161616" title="${a.label}: not reached"></td>`;
+      if(d===null){
+        if(isSkipped(a,i)) return `<td class="bd-heat" style="background:repeating-linear-gradient(135deg,#2a2410,#2a2410 4px,#1a1810 4px,#1a1810 8px);color:#a89050;font-size:8px" title="${a.label}: not fought (skipped)">S</td>`;
+        return `<td class="bd-heat" style="background:#111;border-color:#161616" title="${a.label}: not reached"></td>`;
+      }
       if(d.lost) return `<td class="bd-heat" style="background:#4a1a1a;color:#e05555;border-color:#6e2a2a" title="${a.label}: run ended here">✕</td>`;
       const bg=bdHeatColor(d.on,maxDeaths);
       const fg=d.on===0?'#333':(d.on/maxDeaths>0.5?'#fff':'#111');
