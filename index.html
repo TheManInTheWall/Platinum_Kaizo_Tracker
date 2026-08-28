@@ -1046,6 +1046,7 @@ function renderStats(){
       let min=Infinity;
       state.attempts.forEach(att=>{
         if(att.id===a.id) return;
+        if(isSkipped(att,i)) return;
         const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
         if(i<=endIdx) min=Math.min(min, cumDeathsEff(att,i));
       });
@@ -1664,6 +1665,7 @@ function renderPaceChart(){
   const minCum=TRAINERS.map((_,i)=>{
     let min=Infinity;
     state.attempts.forEach(a=>{
+      if(isSkipped(a,i)) return;
       const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
       if(i<=endIdx) min=Math.min(min, cumDeathsEff(a,i));
     });
@@ -1683,7 +1685,7 @@ function renderPaceChart(){
     return {
       label:a.label,
       data:reachedIndices.map(i=>{
-        if(i>endIdx) return null;
+        if(i>endIdx||isSkipped(a,i)) return null;
         return cumDeathsEff(a,i) - minCum[i];
       }),
       borderColor:col,
