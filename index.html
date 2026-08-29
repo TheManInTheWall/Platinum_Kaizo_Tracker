@@ -190,6 +190,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-timeline" onclick="setPage('timeline')">Timeline</div>
   <div class="navtab" id="tab-progress" onclick="setPage('progress')">Progress</div>
   <div class="navtab" id="tab-breakdown" onclick="setPage('breakdown')">Trainer breakdown</div>
+  <div class="navtab" id="tab-learning" onclick="setPage('learning')">Learning curve</div>
   <div class="navtab" id="tab-bosses" onclick="setPage('bosses')">Bosses</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
@@ -446,7 +447,27 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   </div>
 </div>
 
-<!-- ── Bosses ── -->
+<!-- ── Learning Curve ── -->
+<div class="page" id="page-learning" style="flex-direction:row;overflow:hidden">
+  <!-- picker sidebar -->
+  <div style="width:240px;flex-shrink:0;background:#0e0e0e;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:10px 12px;border-bottom:1px solid #1e1e1e;flex-shrink:0">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:6px">Pick a trainer</div>
+      <input id="lcSearch" type="text" placeholder="Search…" oninput="renderLcPicker()" style="width:100%;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:4px 8px;color:#ccc;font-size:11px">
+    </div>
+    <div id="lcPicker" style="flex:1;overflow-y:auto"></div>
+  </div>
+  <!-- chart area -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 16px">
+    <div id="lcHead" style="font-size:11px;color:#777;margin-bottom:10px;flex-shrink:0">Select a trainer from the left to see how many deaths it's cost across every attempt you've fought it.</div>
+    <div style="flex:1;overflow:auto">
+      <div id="lcChartWrap" style="position:relative;height:100%;min-height:300px">
+        <canvas id="lcChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="page" id="page-bosses" style="flex-direction:column;overflow-y:auto">
   <div class="analytics-page" style="flex:none;overflow:visible">
     <div class="a-title">Boss record — wins vs losses. Edit BOSSES in trainers.js to customise.</div>
@@ -1405,7 +1426,7 @@ function importData(){
 // PAGE SWITCHING
 // ─────────────────────────────────────────────────────────────────
 let currentPage='tracker';
-let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null, progressChartInst=null, sectionsChartInst=null;
+let stackedChartInst=null, avgChartInst=null, paceChartInst=null, timelineChartInst=null, progressChartInst=null, sectionsChartInst=null, lcChartInst=null;
 
 function setPage(p){
   currentPage=p;
@@ -1421,6 +1442,7 @@ function setPage(p){
   else if(p==='timeline') renderTimeline();
   else if(p==='progress') renderProgress();
   else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
+  else if(p==='learning'){ renderLcPicker(); renderLcChart(); }
   else if(p==='bosses') renderBosses();
   else if(p==='insights') renderInsights();
 }
@@ -2426,6 +2448,150 @@ function renderBdTable(){
       <th style="position:sticky;top:0;background:#0e0e0e;color:#e05555;font-size:10px;font-weight:400">max</th>
     </tr>`;
   body.innerHTML=rows||'<tr><td colspan="20" style="color:#444;padding:12px">None of the selected trainers have been reached yet.</td></tr>';
+}
+
+// ─────────────────────────────────────────────────────────────────
+// LEARNING CURVE — deaths on one trainer, in order of encounter
+// ─────────────────────────────────────────────────────────────────
+function getLcSelected(){
+  const raw=localStorage.getItem('lc_selected');
+  return raw!==null ? parseInt(raw,10) : null;
+}
+function setLcSelected(i){
+  localStorage.setItem('lc_selected', String(i));
+}
+
+function renderLcPicker(){
+  const el=document.getElementById('lcPicker');
+  if(!el) return;
+  const query=(document.getElementById('lcSearch')?.value||'').toLowerCase();
+  const selected=getLcSelected();
+  let html='', lastSplit=null;
+  TRAINERS.forEach((t,i)=>{
+    if(query && !t.n.toLowerCase().includes(query) && !t.s.toLowerCase().includes(query)) return;
+    if(t.s!==lastSplit){
+      const cfg=SPLITS_CFG[t.s]||{color:'#666'};
+      html+=`<div class="bd-split-hdr" style="color:${cfg.color}">${t.s}</div>`;
+      lastSplit=t.s;
+    }
+    const cls=selected===i?'bd-item selected':'bd-item';
+    html+=`<div class="${cls}" onclick="selectLcTrainer(${i})" style="cursor:pointer">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px">${t.n}</span>
+    </div>`;
+  });
+  el.innerHTML=html||'<div style="color:#444;font-size:11px;padding:12px">No matches</div>';
+}
+
+function selectLcTrainer(i){
+  setLcSelected(i);
+  renderLcPicker();
+  renderLcChart();
+}
+
+function renderLcChart(){
+  if(lcChartInst){ lcChartInst.destroy(); lcChartInst=null; }
+  const wrap=document.getElementById('lcChartWrap');
+  const head=document.getElementById('lcHead');
+  const canvas=document.getElementById('lcChart');
+  const i=getLcSelected();
+
+  if(i===null||!TRAINERS[i]){
+    head.textContent='Select a trainer from the left to see how many deaths it\'s cost across every attempt you\'ve fought it.';
+    canvas.style.display='none';
+    return;
+  }
+
+  const t=TRAINERS[i];
+  const cfg=SPLITS_CFG[t.s]||{color:'#888'};
+
+  // Build the encounter list, in attempt order (chronological)
+  const encounters=[];
+  state.attempts.forEach(a=>{
+    if(isSkipped(a,i)) return;
+    const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
+    const lostHere=a.ended&&a.endedAtIndex===i;
+    if(i>endIdx && !lostHere) return; // never reached this trainer
+    encounters.push({
+      label:a.label,
+      value: lostHere ? (countLossesGlobal?getPartySize(a,i):0) : a.deaths[i],
+      lost: lostHere,
+    });
+  });
+
+  if(!encounters.length){
+    head.innerHTML=`<span style="color:${cfg.color};font-weight:600">${t.n}</span> — no attempts have reached this trainer yet.`;
+    canvas.style.display='none';
+    return;
+  }
+  canvas.style.display='';
+
+  // Summary line
+  const first=encounters[0], last=encounters[encounters.length-1];
+  const firstN=Math.min(3,encounters.length), lastN=Math.min(3,encounters.length);
+  const firstAvg=encounters.slice(0,firstN).reduce((s,e)=>s+e.value,0)/firstN;
+  const lastAvg=encounters.slice(-lastN).reduce((s,e)=>s+e.value,0)/lastN;
+  const trend = lastAvg<firstAvg ? 'improving' : lastAvg>firstAvg ? 'getting worse' : 'flat';
+  const trendColor = trend==='improving' ? '#7fd97f' : trend==='getting worse' ? '#e05555' : '#888';
+
+  head.innerHTML=`<span style="color:${cfg.color};font-weight:600">${t.n}</span>
+    <span style="color:#555">[${t.s}]</span> —
+    ${encounters.length} encounter${encounters.length===1?'':'s'},
+    first: <b style="color:#ccc">${first.value}</b>,
+    latest: <b style="color:#ccc">${last.value}</b>,
+    trend: <b style="color:${trendColor}">${trend}</b>`;
+
+  const labels=encounters.map((e,idx)=>`#${idx+1}`);
+  const pointColors=encounters.map(e=>e.lost?'#e05555':(e.value===0?'#59a14f':'#edc948'));
+
+  lcChartInst=new Chart(canvas,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:t.n,
+        data:encounters.map(e=>e.value),
+        borderColor:cfg.color,
+        backgroundColor:cfg.color+'22',
+        borderWidth:2,
+        pointBackgroundColor:pointColors,
+        pointBorderColor:pointColors,
+        pointRadius:5,
+        pointHoverRadius:7,
+        tension:0.25,
+        fill:true,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      scales:{
+        x:{
+          ticks:{color:'#666',font:{size:10}},
+          grid:{color:'rgba(255,255,255,0.04)'},
+          title:{display:true,text:'encounter number',color:'#555',font:{size:10}},
+        },
+        y:{
+          beginAtZero:true,
+          ticks:{color:'#777',font:{size:11},stepSize:1},
+          grid:{color:'rgba(255,255,255,0.05)'},
+          title:{display:true,text:'deaths',color:'#555',font:{size:10}},
+        }
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'rgba(14,14,14,0.96)',titleColor:'#eee',bodyColor:'#bbb',
+          borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+          callbacks:{
+            title:items=>encounters[items[0].dataIndex].label,
+            label:item=>{
+              const e=encounters[item.dataIndex];
+              return e.lost ? ` Run ended here (${e.value} counted)` : ` ${e.value} death${e.value===1?'':'s'}`;
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
