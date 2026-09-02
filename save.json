@@ -14250,9 +14250,9 @@
     {
       "id": 35,
       "label": "Attempt 35",
-      "ended": false,
-      "endedAtIndex": null,
-      "currentIndex": 62,
+      "ended": true,
+      "endedAtIndex": 65,
+      "currentIndex": 65,
       "deaths": [
         0,
         0,
@@ -14661,7 +14661,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "partyAtEnd": 1
     }
   ],
   "nextId": 36,
