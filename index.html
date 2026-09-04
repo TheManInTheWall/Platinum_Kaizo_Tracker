@@ -191,6 +191,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-progress" onclick="setPage('progress')">Progress</div>
   <div class="navtab" id="tab-breakdown" onclick="setPage('breakdown')">Trainer breakdown</div>
   <div class="navtab" id="tab-learning" onclick="setPage('learning')">Learning curve</div>
+  <div class="navtab" id="tab-team" onclick="setPage('team')">Team</div>
   <div class="navtab" id="tab-bosses" onclick="setPage('bosses')">Bosses</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
 </div>
@@ -468,6 +469,19 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   </div>
 </div>
 
+<!-- ── Team (external Google Sheet import) ── -->
+<div class="page" id="page-team" style="flex-direction:column;overflow:hidden">
+  <div style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <input id="teamSearch" type="text" placeholder="Search Pokémon, location, nature…" oninput="renderTeamTable()" style="flex:1;max-width:320px;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:5px 9px;color:#ccc;font-size:11px">
+    <button class="btn b" onclick="loadTeamSheet(true)" id="teamRefreshBtn" style="font-size:11px">Refresh from sheet</button>
+    <a href="https://docs.google.com/spreadsheets/d/1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE/edit?gid=825940800" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
+  </div>
+  <div id="teamStatus" style="padding:8px 14px;font-size:11px;color:#555;flex-shrink:0"></div>
+  <div style="flex:1;overflow:auto;padding:0 14px 14px">
+    <div id="teamContent"></div>
+  </div>
+</div>
+
 <div class="page" id="page-bosses" style="flex-direction:column;overflow-y:auto">
   <div class="analytics-page" style="flex:none;overflow:visible">
     <div class="a-title">Boss record — wins vs losses. Edit BOSSES in trainers.js to customise.</div>
@@ -724,6 +738,27 @@ function toggleSkip(i){
   saveState(); render();
 }
 
+// "Furthest attempt" / PB calculations should not give credit for clearing a
+// gym leader that was actually marked as skipped (never really logged as fought).
+// effectiveReach caps progress to just before the earliest such skipped gym leader.
+function effectiveReach(a){
+  const raw=a.ended ? a.endedAtIndex-1 : a.currentIndex;
+  let cap=raw;
+  const gymLeaders=(typeof SECTION_BOSSES!=='undefined'?SECTION_BOSSES:[]);
+  gymLeaders.forEach(name=>{
+    const bi=nameToTrainerIdx(name);
+    if(bi>=0 && bi<=raw && isSkipped(a,bi) && bi-1<cap) cap=bi-1;
+  });
+  return cap;
+}
+
+// Companion to effectiveReach in the "target trainer" indexing convention
+// used by getVisibleTrainerCount / Fights-until-PB (target = reach, or reach+1 if ended)
+function effectiveTarget(a){
+  const r=effectiveReach(a);
+  return a.ended ? r+1 : r;
+}
+
 function effectiveDeaths(a, i){
   if(a.ended&&a.endedAtIndex===i) return countLossesGlobal ? getPartySize(a,i) : 0;
   return a.deaths[i]||0;
@@ -896,7 +931,7 @@ function getFilteredIndices(){
   if(chartFilter==='last5') return state.attempts.slice(-5).map((_,i)=>n-Math.min(5,n)+i);
   if(chartFilter==='best5'){
     return [...state.attempts.entries()]
-      .map(([i,a])=>({i,reach:a.ended?a.endedAtIndex-1:a.currentIndex}))
+      .map(([i,a])=>({i,reach:effectiveReach(a)}))
       .sort((a,b)=>b.reach-a.reach).slice(0,5).map(x=>x.i);
   }
   if(chartFilter==='custom'){
@@ -1130,7 +1165,7 @@ function renderStats(){
       let furthestOtherTarget=null;
       state.attempts.forEach(att=>{
         if(att.id===a.id) return;
-        const target=att.ended ? att.endedAtIndex : att.currentIndex;
+        const target=effectiveTarget(att);
         if(furthestOtherTarget===null||target>furthestOtherTarget) furthestOtherTarget=target;
       });
       if(furthestOtherTarget===null){
@@ -1163,10 +1198,10 @@ function renderStats(){
     document.getElementById('statRemaining').textContent=TRAINERS.length-ci-1;
 
     // Position: how many other attempts reached further
-    const myReach=a.ended?a.endedAtIndex-1:a.currentIndex;
+    const myReach=effectiveReach(a);
     const rank=state.attempts.filter(att=>{
       if(att.id===a.id) return false;
-      const r=att.ended?att.endedAtIndex-1:att.currentIndex;
+      const r=effectiveReach(att);
       return r>myReach;
     }).length+1;
     const suffix=['th','st','nd','rd'];
@@ -1443,6 +1478,7 @@ function setPage(p){
   else if(p==='progress') renderProgress();
   else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
   else if(p==='learning'){ renderLcPicker(); renderLcChart(); }
+  else if(p==='team') loadTeamSheet(false);
   else if(p==='bosses') renderBosses();
   else if(p==='insights') renderInsights();
 }
@@ -1828,8 +1864,8 @@ function renderInsights(){
 
   // Best run = furthest reached; worst = earliest death (least far)
   const attReach=state.attempts.map(a=>{
-    const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
-    return {label:a.label, reach:endIdx, name:TRAINERS[endIdx]?.n||'?'};
+    const r=effectiveReach(a);
+    return {label:a.label, reach:r, name:TRAINERS[r]?.n||'?'};
   });
   const best=attReach.reduce((a,b)=>b.reach>a.reach?b:a);
   const worst=attReach.reduce((a,b)=>b.reach<a.reach?b:a);
@@ -2034,7 +2070,7 @@ function renderProgress(){
   canvas.style.display='';
 
   const labels=state.attempts.map((_,i)=>`#${i+1}`);
-  const reaches=state.attempts.map(a=>(a.ended?a.endedAtIndex-1:a.currentIndex)+1);
+  const reaches=state.attempts.map(a=>effectiveReach(a)+1);
   const efficiency=state.attempts.map(a=>{
     const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
     const fought=endIdx+1;
@@ -2193,7 +2229,7 @@ function renderTimeline(){
   if(!state.attempts.length){ canvas.style.display='none'; return; }
   canvas.style.display='';
 
-  const reaches=state.attempts.map(a=>a.ended?a.endedAtIndex-1:a.currentIndex);
+  const reaches=state.attempts.map(a=>effectiveReach(a));
   const colors=state.attempts.map(a=>{
     const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
     return (SPLITS_CFG[TRAINERS[endIdx]?.s||'']||{color:'#4e79a7'}).color;
@@ -2592,6 +2628,121 @@ function renderLcChart(){
       }
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TEAM — external Google Sheet import (someone else's IV tracker)
+// ─────────────────────────────────────────────────────────────────
+const TEAM_SHEET_ID='1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE';
+const TEAM_SHEET_GID='825940800'; // "Full List" tab
+let teamRows=null, teamHeaders=null, teamLoading=false;
+
+function parseCSV(text){
+  const rows=[];
+  let row=[], field='', inQuotes=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i], next=text[i+1];
+    if(inQuotes){
+      if(c==='"'&&next==='"'){ field+='"'; i++; }
+      else if(c==='"'){ inQuotes=false; }
+      else field+=c;
+    } else {
+      if(c==='"'){ inQuotes=true; }
+      else if(c===','){ row.push(field); field=''; }
+      else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c==='\r'){ /* skip — \n follows */ }
+      else field+=c;
+    }
+  }
+  if(field.length||row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+async function loadTeamSheet(forceRefresh){
+  const statusEl=document.getElementById('teamStatus');
+  const btn=document.getElementById('teamRefreshBtn');
+  if(teamRows && !forceRefresh){ renderTeamTable(); return; }
+  if(teamLoading) return;
+  teamLoading=true;
+  if(btn) btn.disabled=true;
+  if(statusEl){ statusEl.textContent='Loading from Google Sheets…'; statusEl.style.color='#888'; }
+  try{
+    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${TEAM_SHEET_GID}`;
+    const res=await fetch(url,{cache:'no-cache'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text=await res.text();
+    const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
+    if(!rows.length) throw new Error('Empty response');
+    teamHeaders=rows[0].map(h=>(h||'').trim());
+    teamRows=rows.slice(1);
+    // Forward-fill the first column (merged ATTEMPT cells collapse to blanks in CSV)
+    let lastVal='';
+    teamRows.forEach(r=>{
+      if(r[0]&&r[0].trim()!==''){ lastVal=r[0].trim(); r[0]=lastVal; }
+      else { r[0]=lastVal; }
+    });
+    if(statusEl){
+      statusEl.textContent=`Loaded ${teamRows.length} rows from "Full List".`;
+      statusEl.style.color='#7fd97f';
+    }
+  }catch(e){
+    console.error('Team sheet load failed:',e);
+    if(statusEl){
+      statusEl.innerHTML=`Could not load the sheet (${e.message}). It may not be shared publicly, or the network blocked the request. `+
+        `<a href="https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${TEAM_SHEET_GID}" target="_blank" style="color:#4e79a7">Open it directly ↗</a>`;
+      statusEl.style.color='#e05555';
+    }
+    teamRows=null;
+  }
+  teamLoading=false;
+  if(btn) btn.disabled=false;
+  renderTeamTable();
+}
+
+function renderTeamTable(){
+  const content=document.getElementById('teamContent');
+  if(!content) return;
+  if(!teamRows){ content.innerHTML=''; return; }
+
+  const query=(document.getElementById('teamSearch')?.value||'').toLowerCase();
+
+  // Group consecutive rows by the (forward-filled) first column value
+  const groups=[];
+  let curKey=null, curGroup=null;
+  teamRows.forEach(r=>{
+    const key=r[0]||'(unlabelled)';
+    if(key!==curKey){ curGroup={key, rows:[]}; groups.push(curGroup); curKey=key; }
+    curGroup.rows.push(r);
+  });
+
+  const filteredGroups=groups.map(g=>{
+    const rows=query ? g.rows.filter(r=>r.some(c=>(c||'').toLowerCase().includes(query))) : g.rows;
+    return {key:g.key, rows};
+  }).filter(g=>g.rows.length>0);
+
+  if(!filteredGroups.length){
+    content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No matching rows.</div>';
+    return;
+  }
+
+  const groupColors=['#4e79a7','#e15759','#59a14f','#edc948','#af7aa1','#76b7b2','#f28e2b','#ff9da7'];
+  const dataCols=teamHeaders.slice(1); // grouping column already shown as the section title
+
+  content.innerHTML=filteredGroups.map((g,gi)=>{
+    const color=groupColors[gi%groupColors.length];
+    const headerRow=`<tr>${dataCols.map(h=>`<th style="position:sticky;top:0;background:#0e0e0e;white-space:nowrap">${h||''}</th>`).join('')}</tr>`;
+    const bodyRows=g.rows.map(r=>`<tr>${r.slice(1).map(c=>`<td>${c||''}</td>`).join('')}</tr>`).join('');
+    return `
+      <div style="margin:14px 0;border-left:3px solid ${color};padding-left:10px">
+        <div style="font-size:12px;font-weight:600;color:${color};margin-bottom:4px">${g.key}</div>
+        <div style="overflow-x:auto">
+          <table class="data-table" style="font-size:10.5px;min-width:600px">
+            <thead>${headerRow}</thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ─────────────────────────────────────────────────────────────────
