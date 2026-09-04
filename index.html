@@ -2635,7 +2635,31 @@ function renderLcChart(){
 // ─────────────────────────────────────────────────────────────────
 const TEAM_SHEET_ID='1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE';
 const TEAM_SHEET_GID='825940800'; // "Full List" tab
+const TEAM_MAX_COLS=15; // A through O — drop anything after Notes
 let teamRows=null, teamHeaders=null, teamLoading=false;
+
+// Column C encounter-method codes. Blank = Grass. Extend this map as new
+// rod types etc. get added to the sheet — anything not listed just shows
+// as its raw code instead of breaking.
+const ENCOUNTER_METHODS={
+  HT:'Honey Tree',
+  RS:'Rock Smash',
+  OR:'Old Rod',
+  GR:'Good Rod',
+  SR:'Super Rod',
+};
+
+function decodeEncounterMethod(raw){
+  const val=(raw==null?'':String(raw)).trim();
+  if(val==='') return 'Grass';
+  // Split off any "(...)" extra info so it survives even for unmapped codes
+  const m=val.match(/^([^(]*)\s*(\(.*\))?$/);
+  const codeRaw=(m?m[1]:val).trim();
+  const extra=(m&&m[2])?' '+m[2]:'';
+  const code=codeRaw.toUpperCase();
+  const label=ENCOUNTER_METHODS.hasOwnProperty(code) ? ENCOUNTER_METHODS[code] : (codeRaw||'Grass');
+  return label+extra;
+}
 
 function parseCSV(text){
   const rows=[];
@@ -2673,8 +2697,8 @@ async function loadTeamSheet(forceRefresh){
     const text=await res.text();
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
-    teamHeaders=rows[0].map(h=>(h||'').trim());
-    teamRows=rows.slice(1);
+    teamHeaders=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
+    teamRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS));
     // Forward-fill the first column (merged ATTEMPT cells collapse to blanks in CSV)
     let lastVal='';
     teamRows.forEach(r=>{
@@ -2716,7 +2740,10 @@ function renderTeamTable(){
   });
 
   const filteredGroups=groups.map(g=>{
-    const rows=query ? g.rows.filter(r=>r.some(c=>(c||'').toLowerCase().includes(query))) : g.rows;
+    const rows=query ? g.rows.filter(r=>{
+      const decoded=decodeEncounterMethod(r[2]).toLowerCase();
+      return decoded.includes(query) || r.some(c=>(c||'').toLowerCase().includes(query));
+    }) : g.rows;
     return {key:g.key, rows};
   }).filter(g=>g.rows.length>0);
 
@@ -2731,7 +2758,14 @@ function renderTeamTable(){
   content.innerHTML=filteredGroups.map((g,gi)=>{
     const color=groupColors[gi%groupColors.length];
     const headerRow=`<tr>${dataCols.map(h=>`<th style="position:sticky;top:0;background:#0e0e0e;white-space:nowrap">${h||''}</th>`).join('')}</tr>`;
-    const bodyRows=g.rows.map(r=>`<tr>${r.slice(1).map(c=>`<td>${c||''}</td>`).join('')}</tr>`).join('');
+    const bodyRows=g.rows.map(r=>{
+      const sliced=r.slice(1); // drop grouping column A
+      const cells=sliced.map((c,ci)=>{
+        const val=ci===1 ? decodeEncounterMethod(c) : (c||''); // index 1 in sliced = column C
+        return `<td>${val}</td>`;
+      }).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
     return `
       <div style="margin:14px 0;border-left:3px solid ${color};padding-left:10px">
         <div style="font-size:12px;font-weight:600;color:${color};margin-bottom:4px">${g.key}</div>
