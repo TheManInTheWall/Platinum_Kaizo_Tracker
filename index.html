@@ -2794,16 +2794,35 @@ function renderTeamTable(){
     return;
   }
 
-  // No search: show only the most recent attempt by default, rest behind a spoiler
-  const lastIdx=filteredGroups.length-1;
-  const currentHtml=renderGroup(filteredGroups[lastIdx], lastIdx);
-  const earlierHtml=filteredGroups.slice(0,lastIdx).map((g,gi)=>renderGroup(g,gi)).join('');
+  // Match the sheet group to the tracker's currently ACTIVE attempt by number,
+  // not just whichever row happens to be last in the sheet.
+  const numFromLabel=(str)=>{ const m=(str||'').match(/\d+/); return m?parseInt(m[0],10):null; };
+  const numFromSheetKey=(str)=>{ const m=(str||'').match(/^A\s*(\d+)/i); return m?parseInt(m[1],10):null; };
+
+  const active=getActive();
+  const activeNum=active ? numFromLabel(active.label) : null;
+
+  let currentIdx=filteredGroups.length-1; // fallback: last row in the sheet
+  let matched=false;
+  if(activeNum!==null){
+    const idx=filteredGroups.findIndex(g=>numFromSheetKey(g.key)===activeNum);
+    if(idx!==-1){ currentIdx=idx; matched=true; }
+  }
+
+  const currentHtml=renderGroup(filteredGroups[currentIdx], currentIdx);
+  const earlierGroups=filteredGroups.filter((_,i)=>i!==currentIdx);
+  const earlierHtml=earlierGroups.map((g,gi)=>renderGroup(g,gi)).join('');
+
+  const noticeHtml = (activeNum!==null && !matched)
+    ? `<div style="color:#e0a83a;font-size:11px;margin-bottom:8px">No sheet data yet for Attempt ${activeNum} — showing the most recently logged attempt (${filteredGroups[currentIdx].key}) instead.</div>`
+    : '';
 
   content.innerHTML=`
+    ${noticeHtml}
     ${currentHtml}
     <details style="margin-top:6px">
       <summary style="cursor:pointer;color:#666;font-size:11px;padding:6px 0;user-select:none">
-        Show ${lastIdx} earlier attempt${lastIdx===1?'':'s'} ▾
+        Show ${earlierGroups.length} earlier attempt${earlierGroups.length===1?'':'s'} ▾
       </summary>
       <div style="margin-top:4px">${earlierHtml}</div>
     </details>`;
