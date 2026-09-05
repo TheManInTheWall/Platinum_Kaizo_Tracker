@@ -474,10 +474,14 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div style="padding:8px 14px 0;font-size:11px;color:#666;flex-shrink:0">
     Data collected by <span id="teamCreditName" style="color:#8fc6ff;font-weight:600">—</span> — thank you!
   </div>
+  <div style="display:flex;gap:0;border-bottom:1px solid #2a2a2a;flex-shrink:0;margin-top:6px">
+    <div class="navtab active" id="teamSubtab-fulllist" onclick="setTeamDataset('fulllist')" style="font-size:11px;padding:6px 16px">Full List</div>
+    <div class="navtab" id="teamSubtab-fallen" onclick="setTeamDataset('fallen')" style="font-size:11px;padding:6px 16px">Fallen</div>
+  </div>
   <div style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
     <input id="teamSearch" type="text" placeholder="Search Pokémon, location, nature…" oninput="renderTeamTable()" style="flex:1;max-width:320px;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:5px 9px;color:#ccc;font-size:11px">
     <button class="btn b" onclick="loadTeamSheet(true)" id="teamRefreshBtn" style="font-size:11px">Refresh from sheet</button>
-    <a href="https://docs.google.com/spreadsheets/d/1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE/edit?gid=825940800" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
+    <a id="teamSheetLink" href="#" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
   </div>
   <div id="teamStatus" style="padding:8px 14px;font-size:11px;color:#555;flex-shrink:0"></div>
   <div style="flex:1;overflow:auto;padding:0 14px 14px">
@@ -2635,11 +2639,19 @@ function renderLcChart(){
 // TEAM — external Google Sheet import (someone else's IV tracker)
 // ─────────────────────────────────────────────────────────────────
 const TEAM_MAX_COLS=15; // A through O — drop anything after Notes
-let teamRows=null, teamHeaders=null, teamLoading=false;
+
+// Two datasets: "fulllist" has an encounter-method column (C) that gets
+// decoded/split; "fallen" doesn't (its column C is just a death marker).
+const TEAM_DATASETS={
+  fulllist:{ gid:TEAM_SHEET_GID, label:'Full List', splitMethodCol:true, cache:null },
+  fallen:  { gid:TEAM_SHEET_GID_FALLEN, label:'Fallen', splitMethodCol:false, cache:null },
+};
+let teamCurrentDataset='fulllist';
+let teamLoading=false;
 
 // Column C encounter-method codes. Blank = Grass. Extend this map as new
 // rod types etc. get added to the sheet — anything not listed just shows
-// as its raw code instead of breaking.
+// as its raw code instead of breaking. Only used for the Full List tab.
 const ENCOUNTER_METHODS={
   HT:'Honey Tree',
   RS:'Rock Smash',
@@ -2651,7 +2663,6 @@ const ENCOUNTER_METHODS={
 function decodeEncounterMethod(raw){
   const val=(raw==null?'':String(raw)).trim();
   if(val===''){ return {label:'Grass', extra:''}; }
-  // Split off any "(...)" extra info so it survives even for unmapped codes
   const m=val.match(/^([^(]*)\s*(\((.*)\))?$/);
   const codeRaw=(m?m[1]:val).trim();
   const extra=(m&&m[3])?m[3].trim():'';
@@ -2681,43 +2692,61 @@ function parseCSV(text){
   return rows;
 }
 
+function setTeamDataset(key){
+  if(!TEAM_DATASETS[key]) return;
+  teamCurrentDataset=key;
+  document.getElementById('teamSubtab-fulllist')?.classList.toggle('active',key==='fulllist');
+  document.getElementById('teamSubtab-fallen')?.classList.toggle('active',key==='fallen');
+  const ds=TEAM_DATASETS[key];
+  const link=document.getElementById('teamSheetLink');
+  if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
+  loadTeamSheet(false);
+}
+
 async function loadTeamSheet(forceRefresh){
   const creditEl=document.getElementById('teamCreditName');
   if(creditEl) creditEl.textContent=TEAM_CREDIT;
   const statusEl=document.getElementById('teamStatus');
   const btn=document.getElementById('teamRefreshBtn');
-  if(teamRows && !forceRefresh){ renderTeamTable(); return; }
+  const ds=TEAM_DATASETS[teamCurrentDataset];
+
+  const link=document.getElementById('teamSheetLink');
+  if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
+
+  if(ds.cache && !forceRefresh){ renderTeamTable(); return; }
   if(teamLoading) return;
   teamLoading=true;
   if(btn) btn.disabled=true;
-  if(statusEl){ statusEl.textContent='Loading from Google Sheets…'; statusEl.style.color='#888'; }
+  if(statusEl){ statusEl.textContent=`Loading "${ds.label}" from Google Sheets…`; statusEl.style.color='#888'; }
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${TEAM_SHEET_GID}`;
+    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
     const res=await fetch(url,{cache:'no-cache'});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const text=await res.text();
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
-    teamHeaders=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
-    teamRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS));
+    const headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
+    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS));
     // Forward-fill the first column (merged ATTEMPT cells collapse to blanks in CSV)
     let lastVal='';
-    teamRows.forEach(r=>{
+    dataRows.forEach(r=>{
       if(r[0]&&r[0].trim()!==''){ lastVal=r[0].trim(); r[0]=lastVal; }
       else { r[0]=lastVal; }
     });
+    ds.headers=headers;
+    ds.cache=dataRows;
     if(statusEl){
-      statusEl.textContent=`Loaded ${teamRows.length} rows from "Full List".`;
+      statusEl.textContent=`Loaded ${dataRows.length} rows from "${ds.label}".`;
       statusEl.style.color='#7fd97f';
     }
   }catch(e){
     console.error('Team sheet load failed:',e);
     if(statusEl){
-      statusEl.innerHTML=`Could not load the sheet (${e.message}). It may not be shared publicly, or the network blocked the request. `+
-        `<a href="https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${TEAM_SHEET_GID}" target="_blank" style="color:#4e79a7">Open it directly ↗</a>`;
+      statusEl.innerHTML=`Could not load "${ds.label}" (${e.message}). It may not be shared publicly, or the network blocked the request. `+
+        `<a href="https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}" target="_blank" style="color:#4e79a7">Open it directly ↗</a>`;
       statusEl.style.color='#e05555';
     }
-    teamRows=null;
+    ds.cache=null;
   }
   teamLoading=false;
   if(btn) btn.disabled=false;
@@ -2727,24 +2756,33 @@ async function loadTeamSheet(forceRefresh){
 function renderTeamTable(){
   const content=document.getElementById('teamContent');
   if(!content) return;
-  if(!teamRows){ content.innerHTML=''; return; }
+  const ds=TEAM_DATASETS[teamCurrentDataset];
+  if(!ds.cache){ content.innerHTML=''; return; }
 
   const query=(document.getElementById('teamSearch')?.value||'').toLowerCase();
 
-  // Group consecutive rows by the (forward-filled) first column value
+  // Group consecutive rows by the (forward-filled) first column value —
+  // but only keep groups that actually look like a real attempt header
+  // (e.g. "A1", "A37 Gentle Mental"). Stray/blank/garbage rows at the
+  // bottom of the sheet (".", empty strings, formatting leftovers) never
+  // form a legitimate group.
   const groups=[];
   let curKey=null, curGroup=null;
-  teamRows.forEach(r=>{
-    const key=r[0]||'(unlabelled)';
+  ds.cache.forEach(r=>{
+    const key=r[0]||'';
+    if(!/^A\s*\d+/i.test(key)) return; // drop garbage rows entirely
     if(key!==curKey){ curGroup={key, rows:[]}; groups.push(curGroup); curKey=key; }
     curGroup.rows.push(r);
   });
 
   const filteredGroups=groups.map(g=>{
     const rows=query ? g.rows.filter(r=>{
-      const dec=decodeEncounterMethod(r[2]);
-      const decoded=(dec.label+' '+dec.extra).toLowerCase();
-      return decoded.includes(query) || r.some(c=>(c||'').toLowerCase().includes(query));
+      if(ds.splitMethodCol){
+        const dec=decodeEncounterMethod(r[2]);
+        const decoded=(dec.label+' '+dec.extra).toLowerCase();
+        if(decoded.includes(query)) return true;
+      }
+      return r.some(c=>(c||'').toLowerCase().includes(query));
     }) : g.rows;
     return {key:g.key, rows};
   }).filter(g=>g.rows.length>0);
@@ -2755,18 +2793,23 @@ function renderTeamTable(){
   }
 
   const groupColors=['#4e79a7','#e15759','#59a14f','#edc948','#af7aa1','#76b7b2','#f28e2b','#ff9da7'];
-  const rawCols=teamHeaders.slice(1); // drop grouping column A; [B, C, D, E, ...]
-  const methodHeader=rawCols[1]||'Method';
-  const dataColsHeaders=[rawCols[0], methodHeader, 'Encounter Detail', ...rawCols.slice(2)];
+  const rawCols=ds.headers.slice(1); // drop grouping column A
+  let dataColsHeaders;
+  if(ds.splitMethodCol){
+    const methodHeader=rawCols[1]||'Method';
+    dataColsHeaders=[rawCols[0], methodHeader, 'Encounter Detail', ...rawCols.slice(2)];
+  } else {
+    dataColsHeaders=rawCols;
+  }
 
   function renderGroup(g, gi){
     const color=groupColors[gi%groupColors.length];
     const headerRow=`<tr>${dataColsHeaders.map(h=>`<th style="position:sticky;top:0;background:#0e0e0e;white-space:nowrap">${h||''}</th>`).join('')}</tr>`;
     const bodyRows=g.rows.map(r=>{
-      const sliced=r.slice(1); // drop grouping column A → [B, C, D, ...]
+      const sliced=r.slice(1);
       const tds=[];
       sliced.forEach((c,ci)=>{
-        if(ci===1){
+        if(ds.splitMethodCol&&ci===1){
           const dec=decodeEncounterMethod(c);
           tds.push(`<td>${dec.label}</td>`);
           tds.push(`<td style="color:#888">${dec.extra}</td>`);
@@ -2789,18 +2832,26 @@ function renderTeamTable(){
   }
 
   if(query || filteredGroups.length<=1){
-    // Searching (or only one group exists) — show everything flat, no collapsing
     content.innerHTML=filteredGroups.map((g,gi)=>renderGroup(g,gi)).join('');
     return;
   }
 
-  // Match the sheet group to the tracker's currently ACTIVE attempt by number,
-  // not just whichever row happens to be last in the sheet.
-  const numFromLabel=(str)=>{ const m=(str||'').match(/\d+/); return m?parseInt(m[0],10):null; };
+  // Match the sheet group to the tracker's currently ACTIVE attempt.
+  // Primary signal: array position (state.attempts index+1) — robust even
+  // if the label has been renamed to something with no digits in it.
+  // Fallback: parse digits out of the label itself.
   const numFromSheetKey=(str)=>{ const m=(str||'').match(/^A\s*(\d+)/i); return m?parseInt(m[1],10):null; };
 
   const active=getActive();
-  const activeNum=active ? numFromLabel(active.label) : null;
+  let activeNum=null;
+  if(active){
+    const pos=state.attempts.findIndex(a=>a.id===active.id);
+    activeNum = pos>=0 ? pos+1 : null;
+    if(activeNum===null){
+      const m=(active.label||'').match(/\d+/);
+      activeNum = m?parseInt(m[0],10):null;
+    }
+  }
 
   let currentIdx=filteredGroups.length-1; // fallback: last row in the sheet
   let matched=false;

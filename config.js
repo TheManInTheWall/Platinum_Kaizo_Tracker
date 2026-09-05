@@ -13,5 +13,6 @@ const GH_FILE='save.json';              // filename in the repo
 
 // ── Team tab — external Google Sheet someone else maintains ───────
 const TEAM_SHEET_ID='1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE';
-const TEAM_SHEET_GID='825940800'; // gid of the specific tab to import (currently "Full List")
+const TEAM_SHEET_GID='825940800';        // gid of "Full List" tab
+const TEAM_SHEET_GID_FALLEN='59463193';  // gid of "Fallen" tab
 const TEAM_CREDIT='/u/OpticalPlays'; // ← put their actual name/handle here
