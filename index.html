@@ -471,6 +471,9 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 
 <!-- ── Team (external Google Sheet import) ── -->
 <div class="page" id="page-team" style="flex-direction:column;overflow:hidden">
+  <div style="padding:8px 14px 0;font-size:11px;color:#666;flex-shrink:0">
+    Data collected by <span id="teamCreditName" style="color:#8fc6ff;font-weight:600">—</span> — thank you!
+  </div>
   <div style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
     <input id="teamSearch" type="text" placeholder="Search Pokémon, location, nature…" oninput="renderTeamTable()" style="flex:1;max-width:320px;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:5px 9px;color:#ccc;font-size:11px">
     <button class="btn b" onclick="loadTeamSheet(true)" id="teamRefreshBtn" style="font-size:11px">Refresh from sheet</button>
@@ -552,6 +555,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="config.js"></script>
 <script src="trainers.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────
@@ -1278,9 +1282,6 @@ function scrollToCurrent(){
 // ─────────────────────────────────────────────────────────────────
 // EXPORT / IMPORT
 // ─────────────────────────────────────────────────────────────────
-const GH_OWNER='themaninthewall';
-const GH_REPO='Platinum_Kaizo_Tracker';
-const GH_FILE='save.json';
 const GH_RAW=`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/refs/heads/master/${GH_FILE}`;
 const GH_API=`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
 
@@ -2633,8 +2634,6 @@ function renderLcChart(){
 // ─────────────────────────────────────────────────────────────────
 // TEAM — external Google Sheet import (someone else's IV tracker)
 // ─────────────────────────────────────────────────────────────────
-const TEAM_SHEET_ID='1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE';
-const TEAM_SHEET_GID='825940800'; // "Full List" tab
 const TEAM_MAX_COLS=15; // A through O — drop anything after Notes
 let teamRows=null, teamHeaders=null, teamLoading=false;
 
@@ -2651,14 +2650,14 @@ const ENCOUNTER_METHODS={
 
 function decodeEncounterMethod(raw){
   const val=(raw==null?'':String(raw)).trim();
-  if(val==='') return 'Grass';
+  if(val===''){ return {label:'Grass', extra:''}; }
   // Split off any "(...)" extra info so it survives even for unmapped codes
-  const m=val.match(/^([^(]*)\s*(\(.*\))?$/);
+  const m=val.match(/^([^(]*)\s*(\((.*)\))?$/);
   const codeRaw=(m?m[1]:val).trim();
-  const extra=(m&&m[2])?' '+m[2]:'';
+  const extra=(m&&m[3])?m[3].trim():'';
   const code=codeRaw.toUpperCase();
   const label=ENCOUNTER_METHODS.hasOwnProperty(code) ? ENCOUNTER_METHODS[code] : (codeRaw||'Grass');
-  return label+extra;
+  return {label, extra};
 }
 
 function parseCSV(text){
@@ -2683,6 +2682,8 @@ function parseCSV(text){
 }
 
 async function loadTeamSheet(forceRefresh){
+  const creditEl=document.getElementById('teamCreditName');
+  if(creditEl) creditEl.textContent=TEAM_CREDIT;
   const statusEl=document.getElementById('teamStatus');
   const btn=document.getElementById('teamRefreshBtn');
   if(teamRows && !forceRefresh){ renderTeamTable(); return; }
@@ -2741,7 +2742,8 @@ function renderTeamTable(){
 
   const filteredGroups=groups.map(g=>{
     const rows=query ? g.rows.filter(r=>{
-      const decoded=decodeEncounterMethod(r[2]).toLowerCase();
+      const dec=decodeEncounterMethod(r[2]);
+      const decoded=(dec.label+' '+dec.extra).toLowerCase();
       return decoded.includes(query) || r.some(c=>(c||'').toLowerCase().includes(query));
     }) : g.rows;
     return {key:g.key, rows};
@@ -2753,18 +2755,26 @@ function renderTeamTable(){
   }
 
   const groupColors=['#4e79a7','#e15759','#59a14f','#edc948','#af7aa1','#76b7b2','#f28e2b','#ff9da7'];
-  const dataCols=teamHeaders.slice(1); // grouping column already shown as the section title
+  const rawCols=teamHeaders.slice(1); // drop grouping column A; [B, C, D, E, ...]
+  const methodHeader=rawCols[1]||'Method';
+  const dataColsHeaders=[rawCols[0], methodHeader, 'Encounter Detail', ...rawCols.slice(2)];
 
-  content.innerHTML=filteredGroups.map((g,gi)=>{
+  function renderGroup(g, gi){
     const color=groupColors[gi%groupColors.length];
-    const headerRow=`<tr>${dataCols.map(h=>`<th style="position:sticky;top:0;background:#0e0e0e;white-space:nowrap">${h||''}</th>`).join('')}</tr>`;
+    const headerRow=`<tr>${dataColsHeaders.map(h=>`<th style="position:sticky;top:0;background:#0e0e0e;white-space:nowrap">${h||''}</th>`).join('')}</tr>`;
     const bodyRows=g.rows.map(r=>{
-      const sliced=r.slice(1); // drop grouping column A
-      const cells=sliced.map((c,ci)=>{
-        const val=ci===1 ? decodeEncounterMethod(c) : (c||''); // index 1 in sliced = column C
-        return `<td>${val}</td>`;
-      }).join('');
-      return `<tr>${cells}</tr>`;
+      const sliced=r.slice(1); // drop grouping column A → [B, C, D, ...]
+      const tds=[];
+      sliced.forEach((c,ci)=>{
+        if(ci===1){
+          const dec=decodeEncounterMethod(c);
+          tds.push(`<td>${dec.label}</td>`);
+          tds.push(`<td style="color:#888">${dec.extra}</td>`);
+        } else {
+          tds.push(`<td>${c||''}</td>`);
+        }
+      });
+      return `<tr>${tds.join('')}</tr>`;
     }).join('');
     return `
       <div style="margin:14px 0;border-left:3px solid ${color};padding-left:10px">
@@ -2776,7 +2786,27 @@ function renderTeamTable(){
           </table>
         </div>
       </div>`;
-  }).join('');
+  }
+
+  if(query || filteredGroups.length<=1){
+    // Searching (or only one group exists) — show everything flat, no collapsing
+    content.innerHTML=filteredGroups.map((g,gi)=>renderGroup(g,gi)).join('');
+    return;
+  }
+
+  // No search: show only the most recent attempt by default, rest behind a spoiler
+  const lastIdx=filteredGroups.length-1;
+  const currentHtml=renderGroup(filteredGroups[lastIdx], lastIdx);
+  const earlierHtml=filteredGroups.slice(0,lastIdx).map((g,gi)=>renderGroup(g,gi)).join('');
+
+  content.innerHTML=`
+    ${currentHtml}
+    <details style="margin-top:6px">
+      <summary style="cursor:pointer;color:#666;font-size:11px;padding:6px 0;user-select:none">
+        Show ${lastIdx} earlier attempt${lastIdx===1?'':'s'} ▾
+      </summary>
+      <div style="margin-top:4px">${earlierHtml}</div>
+    </details>`;
 }
 
 // ─────────────────────────────────────────────────────────────────
