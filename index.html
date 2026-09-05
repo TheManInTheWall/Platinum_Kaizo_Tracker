@@ -2649,6 +2649,8 @@ const TEAM_DATASETS={
     groupKeyValid:(key)=>/^A\s*\d+/i.test(key),
     groupKeyNumber:(key)=>{ const m=(key||'').match(/^A\s*(\d+)/i); return m?parseInt(m[1],10):null; },
     formatGroupLabel:(key)=>key,
+    formatGroupLabelFromNumber:(num)=>`A${num}`,
+    emptyMessage:'No Pokémon logged yet for this attempt.',
   },
   fallen:{
     gid:TEAM_SHEET_GID_FALLEN, label:'Fallen', splitMethodCol:false, cache:null,
@@ -2656,6 +2658,8 @@ const TEAM_DATASETS={
     groupKeyValid:(key)=>/^\d+/.test(key),
     groupKeyNumber:(key)=>{ const m=(key||'').match(/^(\d+)/); return m?parseInt(m[1],10):null; },
     formatGroupLabel:(key)=>`Attempt ${key}`,
+    formatGroupLabelFromNumber:(num)=>`Attempt ${num}`,
+    emptyMessage:'No deaths recorded.',
   },
 };
 let teamCurrentDataset='fulllist';
@@ -2860,15 +2864,44 @@ function renderTeamTable(){
       </div>`;
   }
 
+  function renderPlaceholder(num, gi){
+    const color=groupColors[gi%groupColors.length];
+    return `
+      <div style="margin:14px 0;border-left:3px solid ${color};padding-left:10px;opacity:0.6">
+        <div style="font-size:12px;font-weight:600;color:${color};margin-bottom:4px">${ds.formatGroupLabelFromNumber(num)}</div>
+        <div style="font-size:11px;color:#666;font-style:italic;padding:4px 0">${ds.emptyMessage}</div>
+      </div>`;
+  }
+
   if(query || filteredGroups.length<=1){
     content.innerHTML=filteredGroups.map((g,gi)=>renderGroup(g,gi)).join('');
     return;
   }
 
-  // Match the sheet group to the tracker's currently ACTIVE attempt.
+  // Fill interior gaps: if attempts 22 and 24 exist but 23 doesn't, insert
+  // an explicit "no data" placeholder for 23 instead of silently skipping it.
+  const realNumbered=filteredGroups
+    .map(g=>({g, num:ds.groupKeyNumber(g.key)}))
+    .filter(x=>x.num!==null);
+  const numsPresent=new Set(realNumbered.map(x=>x.num));
+  const minReal=Math.min(...realNumbered.map(x=>x.num));
+  const maxReal=Math.max(...realNumbered.map(x=>x.num));
+
+  const allSlots=[]; // {num, group|null}
+  for(let n=minReal;n<=maxReal;n++){
+    const found=realNumbered.find(x=>x.num===n);
+    allSlots.push({num:n, group:found?found.g:null});
+  }
+  // Any real groups without a parseable number (shouldn't normally happen)
+  // still get shown, appended at the end in original order.
+  filteredGroups.forEach(g=>{
+    const num=ds.groupKeyNumber(g.key);
+    if(num===null) allSlots.push({num:null, group:g});
+  });
+
+  // Determine the tracker's currently ACTIVE attempt number.
   // Primary signal: array position (state.attempts index+1) — robust even
   // if the label has been renamed to something with no digits in it.
-  // Fallback: parse digits out of the label itself.
   const active=getActive();
   let activeNum=null;
   if(active){
@@ -2880,27 +2913,34 @@ function renderTeamTable(){
     }
   }
 
-  let currentIdx=filteredGroups.length-1; // fallback: last row in the sheet
-  let matched=false;
+  // Find (or synthesize) the "current" slot.
+  let currentSlot=null, currentSlotIsExtra=false;
   if(activeNum!==null){
-    const idx=filteredGroups.findIndex(g=>ds.groupKeyNumber(g.key)===activeNum);
-    if(idx!==-1){ currentIdx=idx; matched=true; }
+    currentSlot=allSlots.find(s=>s.num===activeNum)||null;
+    if(!currentSlot){
+      // Beyond the sheet's range entirely (or before it) — synthesize a
+      // standalone placeholder just for display, without inserting it
+      // into the interior gap-filled sequence below.
+      currentSlot={num:activeNum, group:null};
+      currentSlotIsExtra=true;
+    }
+  } else {
+    // No active attempt selected — fall back to the most recent real slot.
+    const lastReal=[...allSlots].reverse().find(s=>s.group);
+    currentSlot=lastReal||allSlots[allSlots.length-1];
   }
 
-  const currentHtml=renderGroup(filteredGroups[currentIdx], currentIdx);
-  const earlierGroups=filteredGroups.filter((_,i)=>i!==currentIdx);
-  const earlierHtml=earlierGroups.map((g,gi)=>renderGroup(g,gi)).join('');
+  const renderSlot=(s,gi)=> s.group ? renderGroup(s.group,gi) : renderPlaceholder(s.num,gi);
 
-  const noticeHtml = (activeNum!==null && !matched)
-    ? `<div style="color:#e0a83a;font-size:11px;margin-bottom:8px">No sheet data yet for Attempt ${activeNum} — showing the most recently logged attempt (${ds.formatGroupLabel(filteredGroups[currentIdx].key)}) instead.</div>`
-    : '';
+  const currentHtml=renderSlot(currentSlot,0);
+  const earlierSlots=currentSlotIsExtra ? allSlots : allSlots.filter(s=>s!==currentSlot);
+  const earlierHtml=earlierSlots.map((s,gi)=>renderSlot(s,gi+1)).join('');
 
   content.innerHTML=`
-    ${noticeHtml}
     ${currentHtml}
     <details style="margin-top:6px">
       <summary style="cursor:pointer;color:#666;font-size:11px;padding:6px 0;user-select:none">
-        Show ${earlierGroups.length} earlier attempt${earlierGroups.length===1?'':'s'} ▾
+        Show ${earlierSlots.length} earlier attempt${earlierSlots.length===1?'':'s'} ▾
       </summary>
       <div style="margin-top:4px">${earlierHtml}</div>
     </details>`;
