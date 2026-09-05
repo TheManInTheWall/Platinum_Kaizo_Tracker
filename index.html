@@ -2643,8 +2643,20 @@ const TEAM_MAX_COLS=15; // A through O — drop anything after Notes
 // Two datasets: "fulllist" has an encounter-method column (C) that gets
 // decoded/split; "fallen" doesn't (its column C is just a death marker).
 const TEAM_DATASETS={
-  fulllist:{ gid:TEAM_SHEET_GID, label:'Full List', splitMethodCol:true, cache:null },
-  fallen:  { gid:TEAM_SHEET_GID_FALLEN, label:'Fallen', splitMethodCol:false, cache:null },
+  fulllist:{
+    gid:TEAM_SHEET_GID, label:'Full List', splitMethodCol:true, cache:null,
+    // Column A looks like "A1" or "A37 Gentle Mental"
+    groupKeyValid:(key)=>/^A\s*\d+/i.test(key),
+    groupKeyNumber:(key)=>{ const m=(key||'').match(/^A\s*(\d+)/i); return m?parseInt(m[1],10):null; },
+    formatGroupLabel:(key)=>key,
+  },
+  fallen:{
+    gid:TEAM_SHEET_GID_FALLEN, label:'Fallen', splitMethodCol:false, cache:null,
+    // Column A is just a bare attempt number, e.g. "1", "2"
+    groupKeyValid:(key)=>/^\d+/.test(key),
+    groupKeyNumber:(key)=>{ const m=(key||'').match(/^(\d+)/); return m?parseInt(m[1],10):null; },
+    formatGroupLabel:(key)=>`Attempt ${key}`,
+  },
 };
 let teamCurrentDataset='fulllist';
 let teamLoading=false;
@@ -2753,6 +2765,20 @@ async function loadTeamSheet(forceRefresh){
   renderTeamTable();
 }
 
+// Finds the 6 IV columns (HP/ATK/DEF/SPA/SPD/SPE) by header name, works for
+// any dataset regardless of exactly where those columns sit.
+const IV_STAT_NAMES=['HP','ATK','DEF','SPA','SPD','SPE'];
+function findIVColumnIndices(headers){
+  return IV_STAT_NAMES.map(name=>headers.findIndex(h=>(h||'').trim().toUpperCase()===name));
+}
+function ivSumForRow(row, ivIdxs){
+  return ivIdxs.reduce((s,idx)=>{
+    if(idx<0) return s;
+    const v=parseFloat(row[idx]);
+    return s+(isNaN(v)?0:v);
+  },0);
+}
+
 function renderTeamTable(){
   const content=document.getElementById('teamContent');
   if(!content) return;
@@ -2762,18 +2788,18 @@ function renderTeamTable(){
   const query=(document.getElementById('teamSearch')?.value||'').toLowerCase();
 
   // Group consecutive rows by the (forward-filled) first column value —
-  // but only keep groups that actually look like a real attempt header
-  // (e.g. "A1", "A37 Gentle Mental"). Stray/blank/garbage rows at the
-  // bottom of the sheet (".", empty strings, formatting leftovers) never
-  // form a legitimate group.
+  // but only keep groups that actually look like a real attempt header for
+  // THIS dataset's format. Stray/blank/garbage rows never form a group.
   const groups=[];
   let curKey=null, curGroup=null;
   ds.cache.forEach(r=>{
     const key=r[0]||'';
-    if(!/^A\s*\d+/i.test(key)) return; // drop garbage rows entirely
+    if(!ds.groupKeyValid(key)) return; // drop garbage rows entirely
     if(key!==curKey){ curGroup={key, rows:[]}; groups.push(curGroup); curKey=key; }
     curGroup.rows.push(r);
   });
+
+  const ivIdxs=findIVColumnIndices(ds.headers); // full-row indices (incl. column A)
 
   const filteredGroups=groups.map(g=>{
     const rows=query ? g.rows.filter(r=>{
@@ -2801,6 +2827,8 @@ function renderTeamTable(){
   } else {
     dataColsHeaders=rawCols;
   }
+  const hasIVs=ivIdxs.every(i=>i>=0);
+  if(hasIVs) dataColsHeaders=[...dataColsHeaders,'IV Sum'];
 
   function renderGroup(g, gi){
     const color=groupColors[gi%groupColors.length];
@@ -2817,11 +2845,12 @@ function renderTeamTable(){
           tds.push(`<td>${c||''}</td>`);
         }
       });
+      if(hasIVs) tds.push(`<td style="font-weight:600;color:#edc948">${ivSumForRow(r,ivIdxs)}</td>`);
       return `<tr>${tds.join('')}</tr>`;
     }).join('');
     return `
       <div style="margin:14px 0;border-left:3px solid ${color};padding-left:10px">
-        <div style="font-size:12px;font-weight:600;color:${color};margin-bottom:4px">${g.key}</div>
+        <div style="font-size:12px;font-weight:600;color:${color};margin-bottom:4px">${ds.formatGroupLabel(g.key)}</div>
         <div style="overflow-x:auto">
           <table class="data-table" style="font-size:10.5px;min-width:600px">
             <thead>${headerRow}</thead>
@@ -2840,8 +2869,6 @@ function renderTeamTable(){
   // Primary signal: array position (state.attempts index+1) — robust even
   // if the label has been renamed to something with no digits in it.
   // Fallback: parse digits out of the label itself.
-  const numFromSheetKey=(str)=>{ const m=(str||'').match(/^A\s*(\d+)/i); return m?parseInt(m[1],10):null; };
-
   const active=getActive();
   let activeNum=null;
   if(active){
@@ -2856,7 +2883,7 @@ function renderTeamTable(){
   let currentIdx=filteredGroups.length-1; // fallback: last row in the sheet
   let matched=false;
   if(activeNum!==null){
-    const idx=filteredGroups.findIndex(g=>numFromSheetKey(g.key)===activeNum);
+    const idx=filteredGroups.findIndex(g=>ds.groupKeyNumber(g.key)===activeNum);
     if(idx!==-1){ currentIdx=idx; matched=true; }
   }
 
@@ -2865,7 +2892,7 @@ function renderTeamTable(){
   const earlierHtml=earlierGroups.map((g,gi)=>renderGroup(g,gi)).join('');
 
   const noticeHtml = (activeNum!==null && !matched)
-    ? `<div style="color:#e0a83a;font-size:11px;margin-bottom:8px">No sheet data yet for Attempt ${activeNum} — showing the most recently logged attempt (${filteredGroups[currentIdx].key}) instead.</div>`
+    ? `<div style="color:#e0a83a;font-size:11px;margin-bottom:8px">No sheet data yet for Attempt ${activeNum} — showing the most recently logged attempt (${ds.formatGroupLabel(filteredGroups[currentIdx].key)}) instead.</div>`
     : '';
 
   content.innerHTML=`
