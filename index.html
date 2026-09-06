@@ -2847,6 +2847,14 @@ function renderTeamTable(){
   const ds=TEAM_DATASETS[teamCurrentDataset];
   if(!ds.cache){ content.innerHTML=''; return; }
 
+  // Debug aid: show exactly what headers/first row came back, so column
+  // misalignment is visible at a glance instead of guessed at.
+  const sample=ds.cache[0]||[];
+  const debugHtml=`<div style="font-size:9px;color:#3a3a3a;margin-bottom:10px;line-height:1.6">
+    Headers (A→): ${ds.headers.map((h,i)=>`${String.fromCharCode(65+i)}:"${h}"`).join('  ')}<br>
+    First data row: ${sample.map((c,i)=>`${String.fromCharCode(65+i)}:"${c}"`).join('  ')}
+  </div>`;
+
   const query=(document.getElementById('teamSearch')?.value||'').toLowerCase();
 
   // Group consecutive rows by the (forward-filled) first column value —
@@ -2876,7 +2884,7 @@ function renderTeamTable(){
   }).filter(g=>g.rows.length>0);
 
   if(!filteredGroups.length){
-    content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No matching rows.</div>';
+    content.innerHTML=debugHtml+'<div style="color:#444;font-size:12px;padding:20px">No matching rows.</div>';
     return;
   }
 
@@ -2932,7 +2940,7 @@ function renderTeamTable(){
   }
 
   if(query || filteredGroups.length<=1){
-    content.innerHTML=filteredGroups.map((g,gi)=>renderGroup(g,gi)).join('');
+    content.innerHTML=debugHtml+filteredGroups.map((g,gi)=>renderGroup(g,gi)).join('');
     return;
   }
 
@@ -2995,6 +3003,7 @@ function renderTeamTable(){
   const earlierHtml=earlierSlots.map((s,gi)=>renderSlot(s,gi+1)).join('');
 
   content.innerHTML=`
+    ${debugHtml}
     ${currentHtml}
     <details style="margin-top:6px">
       <summary style="cursor:pointer;color:#666;font-size:11px;padding:6px 0;user-select:none">
@@ -3021,7 +3030,8 @@ function renderIVsByAttempt(){
     content.innerHTML='<div style="color:#e05555;font-size:12px;padding:20px">Could not find HP/ATK/DEF/SPA/SPD/SPE columns in the Full List headers.</div>';
     return;
   }
-  const nameIdx=1; // column B = Pokémon
+  const nameIdx=4;  // column E = Pokémon
+  const natureIdx=findHeaderIdx(ds.headers,'NATURE');
 
   const groups=[]; let curKey=null, curGroup=null;
   ds.cache.forEach(r=>{
@@ -3032,7 +3042,16 @@ function renderIVsByAttempt(){
   });
 
   const attempts=groups.map(g=>{
-    const mons=g.rows.map(r=>({name:r[nameIdx]||'?', iv:ivSumForRow(r,ivIdxs)}));
+    const mons=g.rows.map(r=>{
+      const stats={};
+      IV_STAT_NAMES.forEach((name,i)=>{ stats[name]=ivIdxs[i]>=0?(parseFloat(r[ivIdxs[i]])||0):0; });
+      return {
+        name:r[nameIdx]||'?',
+        nature:natureIdx>=0?(r[natureIdx]||''):'',
+        iv:ivSumForRow(r,ivIdxs),
+        stats,
+      };
+    });
     const avg=mons.length ? mons.reduce((s,m)=>s+m.iv,0)/mons.length : 0;
     return {label:ds.formatGroupLabel(g.key), mons, avg:Math.round(avg*100)/100};
   }).filter(a=>a.mons.length>0);
@@ -3071,7 +3090,11 @@ function renderIVsByAttempt(){
   for(let i=0;i<maxRows;i++){
     const cells=sortedMons.map(a=>{
       const m=a.mons[i];
-      return `<td style="padding:3px 10px;white-space:nowrap">${m?`${m.name} <span style="color:#666">(${m.iv})</span>`:''}</td>`;
+      if(!m) return `<td style="padding:3px 10px;white-space:nowrap"></td>`;
+      const statsJson=JSON.stringify(m.stats).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+      return `<td style="padding:3px 10px;white-space:nowrap;cursor:pointer" onclick="showMonDetail(event,'${(m.name||'').replace(/'/g,"\\'")}','${(m.nature||'').replace(/'/g,"\\'")}','${statsJson}')">
+        <span style="text-decoration:underline dotted #555">${m.name}</span> <span style="color:#666">(${m.iv})</span>
+      </td>`;
     }).join('');
     bodyRows.push(`<tr>${cells}</tr>`);
   }
@@ -3079,7 +3102,7 @@ function renderIVsByAttempt(){
   content.innerHTML=`
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <button class="btn" onclick="toggleIVSort()" style="font-size:11px">Sort: IV ${ivSortDesc?'High → Low':'Low → High'}</button>
-      <span style="font-size:10px;color:#555">🥇🥈🥉 = highest average IV attempts, red = lowest</span>
+      <span style="font-size:10px;color:#555">🥇🥈🥉 = highest average IV attempts, red = lowest. Click a Pokémon to see its full IVs.</span>
     </div>
     <div style="overflow:auto">
       <table class="data-table" style="font-size:10.5px">
@@ -3087,6 +3110,29 @@ function renderIVsByAttempt(){
         <tbody>${bodyRows.join('')}</tbody>
       </table>
     </div>`;
+}
+
+function showMonDetail(event, name, nature, statsJsonEscaped){
+  event.stopPropagation();
+  document.getElementById('monDetailPopover')?.remove();
+  let stats={};
+  try{ stats=JSON.parse(statsJsonEscaped.replace(/&quot;/g,'"').replace(/&#39;/g,"'")); }catch(e){}
+  const total=Object.values(stats).reduce((s,v)=>s+(v||0),0);
+  const div=document.createElement('div');
+  div.id='monDetailPopover';
+  const x=Math.min(event.clientX+10, window.innerWidth-200);
+  const y=Math.min(event.clientY+10, window.innerHeight-260);
+  div.style.cssText=`position:fixed;z-index:999;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:11px;color:#ccc;box-shadow:0 4px 20px rgba(0,0,0,.6);left:${x}px;top:${y}px;min-width:160px`;
+  div.innerHTML=`
+    <div style="font-weight:600;color:#fff;margin-bottom:2px">${name}</div>
+    <div style="color:#888;margin-bottom:8px">${nature||'—'}</div>
+    ${IV_STAT_NAMES.map(s=>`<div style="display:flex;justify-content:space-between;padding:1px 0"><span style="color:#666">${s}</span><span>${stats[s]??'-'}</span></div>`).join('')}
+    <div style="border-top:1px solid #333;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between;font-weight:600;color:#edc948">
+      <span>Total</span><span>${total}</span>
+    </div>`;
+  document.body.appendChild(div);
+  const close=()=>{ div.remove(); document.removeEventListener('click',close); };
+  setTimeout(()=>document.addEventListener('click',close),0);
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -3132,8 +3178,8 @@ function renderTeamStats(){
     return;
   }
 
-  const nameIdx=1; // column B = Pokémon (Full List)
-  const notesIdx=findHeaderIdx(full.headers,'NOTES');
+  const nameIdx=4; // column E = Pokémon (Full List)
+  const notesIdx=13; // column N = Notes/trade info (Full List) — hardcoded per exact column letter
   const natureIdx=findHeaderIdx(full.headers,'NATURE');
   const fallenNameIdx=2; // column C = name (Fallen)
 
