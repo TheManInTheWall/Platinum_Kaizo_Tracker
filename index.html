@@ -475,10 +475,12 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     Data collected by <span id="teamCreditName" style="color:#8fc6ff;font-weight:600">—</span> — thank you!
   </div>
   <div style="display:flex;gap:0;border-bottom:1px solid #2a2a2a;flex-shrink:0;margin-top:6px">
-    <div class="navtab active" id="teamSubtab-fulllist" onclick="setTeamDataset('fulllist')" style="font-size:11px;padding:6px 16px">Full List</div>
-    <div class="navtab" id="teamSubtab-fallen" onclick="setTeamDataset('fallen')" style="font-size:11px;padding:6px 16px">Fallen</div>
+    <div class="navtab active" id="teamSubtab-fulllist" onclick="setTeamView('fulllist')" style="font-size:11px;padding:6px 16px">Full List</div>
+    <div class="navtab" id="teamSubtab-fallen" onclick="setTeamView('fallen')" style="font-size:11px;padding:6px 16px">Fallen</div>
+    <div class="navtab" id="teamSubtab-ivbyattempt" onclick="setTeamView('ivbyattempt')" style="font-size:11px;padding:6px 16px">IVs by Attempt</div>
+    <div class="navtab" id="teamSubtab-stats" onclick="setTeamView('stats')" style="font-size:11px;padding:6px 16px">Stats</div>
   </div>
-  <div style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
+  <div id="teamRawControls" style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
     <input id="teamSearch" type="text" placeholder="Search Pokémon, location, nature…" oninput="renderTeamTable()" style="flex:1;max-width:320px;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:5px 9px;color:#ccc;font-size:11px">
     <button class="btn b" onclick="loadTeamSheet(true)" id="teamRefreshBtn" style="font-size:11px">Refresh from sheet</button>
     <a id="teamSheetLink" href="#" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
@@ -1483,7 +1485,7 @@ function setPage(p){
   else if(p==='progress') renderProgress();
   else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
   else if(p==='learning'){ renderLcPicker(); renderLcChart(); }
-  else if(p==='team') loadTeamSheet(false);
+  else if(p==='team') setTeamView(teamView);
   else if(p==='bosses') renderBosses();
   else if(p==='insights') renderInsights();
 }
@@ -2708,15 +2710,71 @@ function parseCSV(text){
   return rows;
 }
 
-function setTeamDataset(key){
-  if(!TEAM_DATASETS[key]) return;
-  teamCurrentDataset=key;
-  document.getElementById('teamSubtab-fulllist')?.classList.toggle('active',key==='fulllist');
-  document.getElementById('teamSubtab-fallen')?.classList.toggle('active',key==='fallen');
-  const ds=TEAM_DATASETS[key];
-  const link=document.getElementById('teamSheetLink');
-  if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
-  loadTeamSheet(false);
+let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'stats'
+
+function setTeamView(view){
+  teamView=view;
+  ['fulllist','fallen','ivbyattempt','stats'].forEach(v=>{
+    document.getElementById(`teamSubtab-${v}`)?.classList.toggle('active',v===view);
+  });
+
+  const rawControls=document.getElementById('teamRawControls');
+  const statusEl=document.getElementById('teamStatus');
+  const isRawView = view==='fulllist'||view==='fallen';
+  if(rawControls) rawControls.style.display=isRawView?'flex':'none';
+
+  if(isRawView){
+    teamCurrentDataset=view;
+    const ds=TEAM_DATASETS[view];
+    const link=document.getElementById('teamSheetLink');
+    if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
+    loadTeamSheet(false);
+    return;
+  }
+
+  // Computed views need Full List (both) and Fallen (stats only) loaded.
+  if(statusEl){ statusEl.textContent=''; }
+  const need=[TEAM_DATASETS.fulllist];
+  if(view==='stats') need.push(TEAM_DATASETS.fallen);
+  const missing=need.filter(ds=>!ds.cache);
+  if(missing.length){
+    if(statusEl){ statusEl.textContent='Loading required sheet data…'; statusEl.style.color='#888'; }
+    Promise.all(missing.map(ds=>loadTeamDatasetSilently(ds))).then(()=>{
+      if(statusEl){ statusEl.textContent=''; }
+      renderTeamComputedView();
+    });
+  } else {
+    renderTeamComputedView();
+  }
+}
+
+// Loads a dataset into its own cache without touching the shared status/refresh UI
+// (used when a computed view needs data that hasn't been fetched yet).
+async function loadTeamDatasetSilently(ds){
+  if(ds.cache) return;
+  try{
+    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
+    const res=await fetch(url,{cache:'no-cache'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text=await res.text();
+    const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
+    if(!rows.length) throw new Error('Empty response');
+    ds.headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
+    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS));
+    let lastVal='';
+    dataRows.forEach(r=>{
+      if(r[0]&&r[0].trim()!==''){ lastVal=r[0].trim(); r[0]=lastVal; }
+      else { r[0]=lastVal; }
+    });
+    ds.cache=dataRows;
+  }catch(e){
+    console.error(`Failed to load ${ds.label}:`,e);
+  }
+}
+
+function renderTeamComputedView(){
+  if(teamView==='ivbyattempt') renderIVsByAttempt();
+  else if(teamView==='stats') renderTeamStats();
 }
 
 async function loadTeamSheet(forceRefresh){
@@ -2944,6 +3002,193 @@ function renderTeamTable(){
       </summary>
       <div style="margin-top:4px">${earlierHtml}</div>
     </details>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// IVs BY ATTEMPT — computed from Full List, one column per attempt
+// ─────────────────────────────────────────────────────────────────
+let ivSortDesc=true;
+function toggleIVSort(){ ivSortDesc=!ivSortDesc; renderIVsByAttempt(); }
+
+function renderIVsByAttempt(){
+  const content=document.getElementById('teamContent');
+  if(!content) return;
+  const ds=TEAM_DATASETS.fulllist;
+  if(!ds.cache){ content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">Full List data not loaded.</div>'; return; }
+
+  const ivIdxs=findIVColumnIndices(ds.headers);
+  if(ivIdxs.some(i=>i<0)){
+    content.innerHTML='<div style="color:#e05555;font-size:12px;padding:20px">Could not find HP/ATK/DEF/SPA/SPD/SPE columns in the Full List headers.</div>';
+    return;
+  }
+  const nameIdx=1; // column B = Pokémon
+
+  const groups=[]; let curKey=null, curGroup=null;
+  ds.cache.forEach(r=>{
+    const key=r[0]||'';
+    if(!ds.groupKeyValid(key)) return;
+    if(key!==curKey){ curGroup={key,rows:[]}; groups.push(curGroup); curKey=key; }
+    curGroup.rows.push(r);
+  });
+
+  const attempts=groups.map(g=>{
+    const mons=g.rows.map(r=>({name:r[nameIdx]||'?', iv:ivSumForRow(r,ivIdxs)}));
+    const avg=mons.length ? mons.reduce((s,m)=>s+m.iv,0)/mons.length : 0;
+    return {label:ds.formatGroupLabel(g.key), mons, avg:Math.round(avg*100)/100};
+  }).filter(a=>a.mons.length>0);
+
+  if(!attempts.length){
+    content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No data yet.</div>';
+    return;
+  }
+
+  // Rank attempts by avg IV for gold/silver/bronze/worst highlighting
+  const ranked=[...attempts].sort((a,b)=>b.avg-a.avg);
+  const rankColor=(attempt)=>{
+    const idx=ranked.indexOf(attempt);
+    if(idx===0) return {bg:'rgba(212,175,55,0.15)', border:'#d4af37', label:'🥇'};
+    if(idx===1) return {bg:'rgba(192,192,192,0.15)', border:'#c0c0c0', label:'🥈'};
+    if(idx===2) return {bg:'rgba(205,127,50,0.15)', border:'#cd7f32', label:'🥉'};
+    if(idx===ranked.length-1) return {bg:'rgba(224,85,85,0.12)', border:'#e05555', label:''};
+    return {bg:'transparent', border:'#2a2a2a', label:''};
+  };
+
+  const sortedMons=attempts.map(a=>{
+    const mons=[...a.mons].sort((x,y)=>ivSortDesc ? y.iv-x.iv : x.iv-y.iv);
+    return {...a, mons};
+  });
+  const maxRows=Math.max(...sortedMons.map(a=>a.mons.length));
+
+  const headerCells=sortedMons.map(a=>{
+    const rc=rankColor(a);
+    return `<th style="position:sticky;top:0;background:${rc.bg==='transparent'?'#0e0e0e':rc.bg};border-bottom:2px solid ${rc.border};padding:6px 10px;white-space:nowrap;min-width:130px">
+      <div style="font-size:11px;color:#ccc">${rc.label} ${a.label}</div>
+      <div style="font-size:10px;color:#888;font-weight:400">avg IV: ${a.avg}</div>
+    </th>`;
+  }).join('');
+
+  const bodyRows=[];
+  for(let i=0;i<maxRows;i++){
+    const cells=sortedMons.map(a=>{
+      const m=a.mons[i];
+      return `<td style="padding:3px 10px;white-space:nowrap">${m?`${m.name} <span style="color:#666">(${m.iv})</span>`:''}</td>`;
+    }).join('');
+    bodyRows.push(`<tr>${cells}</tr>`);
+  }
+
+  content.innerHTML=`
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <button class="btn" onclick="toggleIVSort()" style="font-size:11px">Sort: IV ${ivSortDesc?'High → Low':'Low → High'}</button>
+      <span style="font-size:10px;color:#555">🥇🥈🥉 = highest average IV attempts, red = lowest</span>
+    </div>
+    <div style="overflow:auto">
+      <table class="data-table" style="font-size:10.5px">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>${bodyRows.join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ADDITIONAL STATS — computed from Full List + Fallen
+// ─────────────────────────────────────────────────────────────────
+function tallyColumn(rows, idx){
+  const counts=new Map();
+  rows.forEach(r=>{
+    const v=(r[idx]||'').trim();
+    if(!v) return;
+    counts.set(v, (counts.get(v)||0)+1);
+  });
+  return [...counts.entries()].sort((a,b)=>b[1]-a[1]);
+}
+
+function findHeaderIdx(headers, name){
+  return headers.findIndex(h=>(h||'').trim().toUpperCase()===name.toUpperCase());
+}
+
+function renderStatList(title, entries, color, limit){
+  const rows=entries.slice(0,limit).map(([name,count],i)=>`
+    <tr>
+      <td style="color:#444;width:20px">${i+1}</td>
+      <td>${name}</td>
+      <td style="color:${color};font-weight:600;text-align:right">${count}</td>
+    </tr>`).join('');
+  return `
+    <div style="flex:1;min-width:220px">
+      <div class="a-title" style="font-size:11px">${title}</div>
+      <table class="data-table" style="font-size:11px">
+        <tbody>${rows||'<tr><td colspan="3" style="color:#444">No data</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderTeamStats(){
+  const content=document.getElementById('teamContent');
+  if(!content) return;
+  const full=TEAM_DATASETS.fulllist;
+  const fallen=TEAM_DATASETS.fallen;
+  if(!full.cache||!fallen.cache){
+    content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">Loading required data…</div>';
+    return;
+  }
+
+  const nameIdx=1; // column B = Pokémon (Full List)
+  const notesIdx=findHeaderIdx(full.headers,'NOTES');
+  const natureIdx=findHeaderIdx(full.headers,'NATURE');
+  const fallenNameIdx=2; // column C = name (Fallen)
+
+  // Most obtained species (Full List)
+  const obtained=tallyColumn(full.cache, nameIdx);
+
+  // Traded — scan Notes for "Traded for X"
+  const tradeRe=/traded for ([a-z\-' ]+)/i;
+  const tradedRows=notesIdx>=0 ? full.cache.filter(r=>tradeRe.test(r[notesIdx]||'')) : [];
+  const recipientCounts=new Map();
+  const chestnutSpecies=[], nomuSpecies=[], allTradedSpecies=[];
+  tradedRows.forEach(r=>{
+    const m=(r[notesIdx]||'').match(tradeRe);
+    const recipient=m?m[1].trim():'?';
+    recipientCounts.set(recipient,(recipientCounts.get(recipient)||0)+1);
+    const species=r[nameIdx]||'?';
+    allTradedSpecies.push(species);
+    if(/^chestnut$/i.test(recipient)) chestnutSpecies.push(species);
+    if(/^nomu$/i.test(recipient)) nomuSpecies.push(species);
+  });
+  const tallyList=(arr)=>{
+    const m=new Map();
+    arr.forEach(v=>m.set(v,(m.get(v)||0)+1));
+    return [...m.entries()].sort((a,b)=>b[1]-a[1]);
+  };
+  const chestnutTally=tallyList(chestnutSpecies);
+  const nomuTally=tallyList(nomuSpecies);
+  const mostTradedTally=tallyList(allTradedSpecies);
+
+  // Highest deaths (Fallen)
+  const deaths=tallyColumn(fallen.cache, fallenNameIdx);
+
+  // Natures (Full List)
+  const natures=natureIdx>=0 ? tallyColumn(full.cache, natureIdx) : [];
+  const commonNatures=natures.slice(0,6);
+  const rareNatures=[...natures].sort((a,b)=>a[1]-b[1]).slice(0,6);
+
+  content.innerHTML=`
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+      ${renderStatList('Top Chestnut Trades', chestnutTally, '#8fc6ff', 10)}
+      ${renderStatList('Top Nomu Trades', nomuTally, '#8fc6ff', 10)}
+      ${renderStatList('Pokémon Most Traded', mostTradedTally, '#af7aa1', 10)}
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+      ${renderStatList('Top Most Obtained Pokémon', obtained, '#59a14f', 10)}
+      ${renderStatList('Top Highest Deaths', deaths, '#e05555', 10)}
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      ${renderStatList('Top 6 Common Natures', commonNatures, '#edc948', 6)}
+      ${renderStatList('Bottom 6 Rare Natures', rareNatures, '#888', 6)}
+    </div>
+    <div style="font-size:10px;color:#444;margin-top:16px">
+      Trades detected via "Traded for X" in the Notes column — ${tradedRows.length} matching rows found.
+      Recipients seen: ${[...recipientCounts.entries()].map(([n,c])=>`${n} (${c})`).join(', ')||'none'}.
+    </div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────
