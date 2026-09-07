@@ -3152,6 +3152,24 @@ function findHeaderIdx(headers, name){
   return headers.findIndex(h=>(h||'').trim().toUpperCase()===name.toUpperCase());
 }
 
+// Robust Pokémon-name column finder: look for a header actually saying
+// "Pokemon"/"Pokémon" first; fall back to a known position if not found
+// (in case the header cell is blank/an icon rather than text).
+function findPokemonNameIdx(headers, fallbackIdx){
+  const idx=headers.findIndex(h=>/pok[eé]mon/i.test(h||''));
+  return idx>=0 ? idx : fallbackIdx;
+}
+
+function pctBar(pct, color){
+  const clamped=Math.max(0,Math.min(100,pct));
+  return `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+    <div style="width:40px;background:#1a1a1a;border-radius:3px;height:8px;overflow:hidden">
+      <div style="width:${clamped}%;height:100%;background:${color}"></div>
+    </div>
+    <span style="color:${color};font-weight:600;min-width:34px;text-align:right">${Math.round(pct)}%</span>
+  </div>`;
+}
+
 function renderStatList(title, entries, color, limit){
   const rows=entries.slice(0,limit).map(([name,count],i)=>`
     <tr>
@@ -3178,17 +3196,30 @@ function renderTeamStats(){
     return;
   }
 
-  const nameIdx=4; // column E = Pokémon (Full List)
-  const notesIdx=13; // column N = Notes/trade info (Full List) — hardcoded per exact column letter
+  const nameIdx=findPokemonNameIdx(full.headers, 4);       // column E fallback
+  const fallenNameIdx=findPokemonNameIdx(fallen.headers, 2); // column C fallback
+  const notesIdx=13; // column N — hardcoded per exact column letter
   const natureIdx=findHeaderIdx(full.headers,'NATURE');
-  const fallenNameIdx=2; // column C = name (Fallen)
+
+  // Only tally rows that actually belong to a real, valid attempt — this
+  // drops stray/garbage rows (e.g. a trailing "." row) from every stat below.
+  const fullRows=full.cache.filter(r=>full.groupKeyValid(r[0]||''));
+  const fallenRows=fallen.cache.filter(r=>fallen.groupKeyValid(r[0]||''));
+
+  // Total number of distinct attempts logged in each sheet (denominator for %s)
+  const totalAttemptsFull=new Set(fullRows.map(r=>full.groupKeyNumber(r[0]))).size;
 
   // Most obtained species (Full List)
-  const obtained=tallyColumn(full.cache, nameIdx);
+  const obtained=tallyColumn(fullRows, nameIdx);
+  const obtainedMap=new Map(obtained);
+
+  // Highest deaths (Fallen)
+  const deaths=tallyColumn(fallenRows, fallenNameIdx);
+  const deathsMap=new Map(deaths);
 
   // Traded — scan Notes for "Traded for X"
   const tradeRe=/traded for ([a-z\-' ]+)/i;
-  const tradedRows=notesIdx>=0 ? full.cache.filter(r=>tradeRe.test(r[notesIdx]||'')) : [];
+  const tradedRows=notesIdx>=0 ? fullRows.filter(r=>tradeRe.test(r[notesIdx]||'')) : [];
   const recipientCounts=new Map();
   const chestnutSpecies=[], nomuSpecies=[], allTradedSpecies=[];
   tradedRows.forEach(r=>{
@@ -3209,31 +3240,68 @@ function renderTeamStats(){
   const nomuTally=tallyList(nomuSpecies);
   const mostTradedTally=tallyList(allTradedSpecies);
 
-  // Highest deaths (Fallen)
-  const deaths=tallyColumn(fallen.cache, fallenNameIdx);
-
   // Natures (Full List)
-  const natures=natureIdx>=0 ? tallyColumn(full.cache, natureIdx) : [];
+  const natures=natureIdx>=0 ? tallyColumn(fullRows, natureIdx) : [];
   const commonNatures=natures.slice(0,6);
   const rareNatures=[...natures].sort((a,b)=>a[1]-b[1]).slice(0,6);
 
+  // Obtained + % died table (combined, richer than a plain list)
+  const obtainedWithPct=obtained.slice(0,12).map(([name,count])=>{
+    const d=deathsMap.get(name)||0;
+    const pctObtained=totalAttemptsFull>0 ? (count/totalAttemptsFull*100) : 0;
+    const pctDied=count>0 ? (d/count*100) : 0;
+    return {name,count,d,pctObtained,pctDied};
+  });
+  const obtainedRows=obtainedWithPct.map((x,i)=>`
+    <tr>
+      <td style="color:#444">${i+1}</td>
+      <td>${x.name}</td>
+      <td style="color:#59a14f;font-weight:600;text-align:right">${x.count}/${totalAttemptsFull}</td>
+      <td>${pctBar(x.pctObtained,'#59a14f')}</td>
+      <td style="color:#e05555;font-weight:600;text-align:right">${x.d}/${x.count}</td>
+      <td>${pctBar(x.pctDied,'#e05555')}</td>
+    </tr>`).join('');
+
+  // Survived — obtained at least once, never appears in Fallen at all
+  const survived=obtained.filter(([name])=>!deathsMap.has(name));
+  const survivedRows=survived.slice(0,15).map(([name,count],i)=>`
+    <tr>
+      <td style="color:#444">${i+1}</td>
+      <td>${name}</td>
+      <td style="color:#7fd97f;font-weight:600;text-align:right">${count}/${totalAttemptsFull}</td>
+    </tr>`).join('');
+
   content.innerHTML=`
+    <div class="a-title" style="font-size:11px;margin-bottom:6px">Obtained vs Died (top 12 by times obtained)</div>
+    <table class="data-table" style="font-size:11px;margin-bottom:20px">
+      <thead><tr><th></th><th>Pokémon</th><th>Obtained</th><th>% of attempts</th><th>Died</th><th>% of times obtained</th></tr></thead>
+      <tbody>${obtainedRows||'<tr><td colspan="6" style="color:#444">No data</td></tr>'}</tbody>
+    </table>
+
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
       ${renderStatList('Top Chestnut Trades', chestnutTally, '#8fc6ff', 10)}
       ${renderStatList('Top Nomu Trades', nomuTally, '#8fc6ff', 10)}
       ${renderStatList('Pokémon Most Traded', mostTradedTally, '#af7aa1', 10)}
     </div>
+
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-      ${renderStatList('Top Most Obtained Pokémon', obtained, '#59a14f', 10)}
+      <div style="flex:1;min-width:220px">
+        <div class="a-title" style="font-size:11px">Never Died (survived every time)</div>
+        <table class="data-table" style="font-size:11px">
+          <tbody>${survivedRows||'<tr><td colspan="3" style="color:#444">No data</td></tr>'}</tbody>
+        </table>
+      </div>
       ${renderStatList('Top Highest Deaths', deaths, '#e05555', 10)}
     </div>
+
     <div style="display:flex;gap:16px;flex-wrap:wrap">
       ${renderStatList('Top 6 Common Natures', commonNatures, '#edc948', 6)}
       ${renderStatList('Bottom 6 Rare Natures', rareNatures, '#888', 6)}
     </div>
+
     <div style="font-size:10px;color:#444;margin-top:16px">
-      Trades detected via "Traded for X" in the Notes column — ${tradedRows.length} matching rows found.
-      Recipients seen: ${[...recipientCounts.entries()].map(([n,c])=>`${n} (${c})`).join(', ')||'none'}.
+      ${totalAttemptsFull} valid attempts detected in Full List. Trades detected via "Traded for X" in column N —
+      ${tradedRows.length} matching rows found. Recipients seen: ${[...recipientCounts.entries()].map(([n,c])=>`${n} (${c})`).join(', ')||'none'}.
     </div>`;
 }
 
