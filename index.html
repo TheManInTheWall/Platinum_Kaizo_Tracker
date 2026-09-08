@@ -2750,6 +2750,17 @@ function setTeamView(view){
 
 // Loads a dataset into its own cache without touching the shared status/refresh UI
 // (used when a computed view needs data that hasn't been fetched yet).
+// A row counts as real data only if at least one cell *other than* the
+// grouping column (A) has actual content — not blank, not just a lone ".".
+// Filters out stray formatting/spacer rows that would otherwise inherit a
+// forward-filled attempt number and masquerade as real data.
+function isMeaningfulDataRow(r){
+  return r.slice(1).some(c=>{
+    const v=(c||'').trim();
+    return v!=='' && v!=='.';
+  });
+}
+
 async function loadTeamDatasetSilently(ds){
   if(ds.cache) return;
   try{
@@ -2760,7 +2771,7 @@ async function loadTeamDatasetSilently(ds){
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
     ds.headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
-    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS));
+    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS)).filter(isMeaningfulDataRow);
     let lastVal='';
     dataRows.forEach(r=>{
       if(r[0]&&r[0].trim()!==''){ lastVal=r[0].trim(); r[0]=lastVal; }
@@ -2800,7 +2811,7 @@ async function loadTeamSheet(forceRefresh){
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
     const headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
-    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS));
+    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS)).filter(isMeaningfulDataRow);
     // Forward-fill the first column (merged ATTEMPT cells collapse to blanks in CSV)
     let lastVal='';
     dataRows.forEach(r=>{
@@ -3174,13 +3185,13 @@ function renderStatList(title, entries, color, limit){
   const rows=entries.slice(0,limit).map(([name,count],i)=>`
     <tr>
       <td style="color:#444;width:20px">${i+1}</td>
-      <td>${name}</td>
-      <td style="color:${color};font-weight:600;text-align:right">${count}</td>
+      <td style="white-space:nowrap">${name}</td>
+      <td style="color:${color};font-weight:600;text-align:right;width:50px">${count}</td>
     </tr>`).join('');
   return `
-    <div style="flex:1;min-width:220px">
+    <div style="flex:1 1 260px;max-width:320px">
       <div class="a-title" style="font-size:11px">${title}</div>
-      <table class="data-table" style="font-size:11px">
+      <table class="data-table" style="font-size:11px;width:auto">
         <tbody>${rows||'<tr><td colspan="3" style="color:#444">No data</td></tr>'}</tbody>
       </table>
     </div>`;
@@ -3196,8 +3207,8 @@ function renderTeamStats(){
     return;
   }
 
-  const nameIdx=findPokemonNameIdx(full.headers, 4);       // column E fallback
-  const fallenNameIdx=findPokemonNameIdx(fallen.headers, 2); // column C fallback
+  const nameIdx=4;        // column E = Pokémon (Full List) — matches IVs by Attempt, known correct
+  const fallenNameIdx=2;  // column C = Pokémon (Fallen) — confirmed correct via debug dump
   const notesIdx=13; // column N — hardcoded per exact column letter
   const natureIdx=findHeaderIdx(full.headers,'NATURE');
 
@@ -3266,9 +3277,9 @@ function renderTeamStats(){
   const survived=obtained.filter(([name])=>!deathsMap.has(name));
   const survivedRows=survived.slice(0,15).map(([name,count],i)=>`
     <tr>
-      <td style="color:#444">${i+1}</td>
-      <td>${name}</td>
-      <td style="color:#7fd97f;font-weight:600;text-align:right">${count}/${totalAttemptsFull}</td>
+      <td style="color:#444;width:20px">${i+1}</td>
+      <td style="white-space:nowrap">${name}</td>
+      <td style="color:#7fd97f;font-weight:600;text-align:right;white-space:nowrap">${count}/${totalAttemptsFull}</td>
     </tr>`).join('');
 
   content.innerHTML=`
@@ -3285,9 +3296,9 @@ function renderTeamStats(){
     </div>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-      <div style="flex:1;min-width:220px">
+      <div style="flex:1 1 260px;max-width:320px">
         <div class="a-title" style="font-size:11px">Never Died (survived every time)</div>
-        <table class="data-table" style="font-size:11px">
+        <table class="data-table" style="font-size:11px;width:auto">
           <tbody>${survivedRows||'<tr><td colspan="3" style="color:#444">No data</td></tr>'}</tbody>
         </table>
       </div>
