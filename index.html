@@ -2852,6 +2852,25 @@ function ivSumForRow(row, ivIdxs){
   },0);
 }
 
+// Hidden Power type + base power from the 6 IVs, in HP/ATK/DEF/SPA/SPD/SPE
+// order — same formula used by the games from Gen III onward.
+const HIDDEN_POWER_TYPES=['Fighting','Flying','Poison','Ground','Rock','Bug','Ghost','Steel',
+  'Fire','Water','Grass','Electric','Psychic','Ice','Dragon','Dark'];
+function hiddenPower(hp, atk, def, spa, spd, spe){
+  const a=[hp,atk,def,spa,spd,spe].map(v=>{ const n=parseInt(v,10); return isNaN(n)?0:n; });
+  const bit=(x)=>x&1;
+  const bit2=(x)=>(x>>1)&1;
+  const t=bit(a[0])+2*bit(a[1])+4*bit(a[2])+8*bit(a[5])+16*bit(a[3])+32*bit(a[4]);
+  const p=bit2(a[0])+2*bit2(a[1])+4*bit2(a[2])+8*bit2(a[5])+16*bit2(a[3])+32*bit2(a[4]);
+  const type=HIDDEN_POWER_TYPES[Math.floor(t*15/63)];
+  const power=Math.floor(p*40/63+30);
+  return {type, power};
+}
+function hiddenPowerForRow(row, ivIdxs){
+  const vals=ivIdxs.map(idx=>idx>=0?row[idx]:0);
+  return hiddenPower(...vals);
+}
+
 function renderTeamTable(){
   const content=document.getElementById('teamContent');
   if(!content) return;
@@ -2909,7 +2928,7 @@ function renderTeamTable(){
     dataColsHeaders=rawCols;
   }
   const hasIVs=ivIdxs.every(i=>i>=0);
-  if(hasIVs) dataColsHeaders=[...dataColsHeaders,'IV Sum'];
+  if(hasIVs) dataColsHeaders=[...dataColsHeaders,'IV Sum','Hidden Power'];
 
   function renderGroup(g, gi){
     const color=groupColors[gi%groupColors.length];
@@ -2926,7 +2945,16 @@ function renderTeamTable(){
           tds.push(`<td>${c||''}</td>`);
         }
       });
-      if(hasIVs) tds.push(`<td style="font-weight:600;color:#edc948">${ivSumForRow(r,ivIdxs)}</td>`);
+      if(hasIVs){
+        const sum=ivSumForRow(r,ivIdxs);
+        tds.push(`<td style="font-weight:600;color:#edc948">${sum}</td>`);
+        if(sum>0){
+          const hp=hiddenPowerForRow(r,ivIdxs);
+          tds.push(`<td style="color:#af7aa1">${hp.type} ${hp.power}</td>`);
+        } else {
+          tds.push(`<td></td>`);
+        }
+      }
       return `<tr>${tds.join('')}</tr>`;
     }).join('');
     return `
@@ -3129,10 +3157,11 @@ function showMonDetail(event, name, nature, statsJsonEscaped){
   let stats={};
   try{ stats=JSON.parse(statsJsonEscaped.replace(/&quot;/g,'"').replace(/&#39;/g,"'")); }catch(e){}
   const total=Object.values(stats).reduce((s,v)=>s+(v||0),0);
+  const hp=hiddenPower(stats.HP,stats.ATK,stats.DEF,stats.SPA,stats.SPD,stats.SPE);
   const div=document.createElement('div');
   div.id='monDetailPopover';
   const x=Math.min(event.clientX+10, window.innerWidth-200);
-  const y=Math.min(event.clientY+10, window.innerHeight-260);
+  const y=Math.min(event.clientY+10, window.innerHeight-280);
   div.style.cssText=`position:fixed;z-index:999;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px 14px;font-size:11px;color:#ccc;box-shadow:0 4px 20px rgba(0,0,0,.6);left:${x}px;top:${y}px;min-width:160px`;
   div.innerHTML=`
     <div style="font-weight:600;color:#fff;margin-bottom:2px">${name}</div>
@@ -3140,6 +3169,9 @@ function showMonDetail(event, name, nature, statsJsonEscaped){
     ${IV_STAT_NAMES.map(s=>`<div style="display:flex;justify-content:space-between;padding:1px 0"><span style="color:#666">${s}</span><span>${stats[s]??'-'}</span></div>`).join('')}
     <div style="border-top:1px solid #333;margin-top:6px;padding-top:4px;display:flex;justify-content:space-between;font-weight:600;color:#edc948">
       <span>Total</span><span>${total}</span>
+    </div>
+    <div style="margin-top:4px;display:flex;justify-content:space-between;color:#af7aa1">
+      <span>Hidden Power</span><span>${hp.type} ${hp.power}</span>
     </div>`;
   document.body.appendChild(div);
   const close=()=>{ div.remove(); document.removeEventListener('click',close); };
@@ -3173,8 +3205,8 @@ function findPokemonNameIdx(headers, fallbackIdx){
 
 function pctBar(pct, color){
   const clamped=Math.max(0,Math.min(100,pct));
-  return `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-    <div style="width:40px;background:#1a1a1a;border-radius:3px;height:8px;overflow:hidden">
+  return `<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+    <div style="width:70px;background:#1a1a1a;border-radius:3px;height:10px;overflow:hidden;flex-shrink:0">
       <div style="width:${clamped}%;height:100%;background:${color}"></div>
     </div>
     <span style="color:${color};font-weight:600;min-width:34px;text-align:right">${Math.round(pct)}%</span>
