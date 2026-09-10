@@ -680,7 +680,7 @@ function copyPaceInfo(){
   if(fightsUntilPB&&fightsUntilPB!=='—') lines.push(`Fights until PB: ${fightsUntilPB}`);
   if(nextPaceDeath&&nextPaceDeath!=='—') lines.push(`Next death in best pace run: ${nextPaceDeath}`);
 
-  const text=lines.join('\n');
+  const text=lines.join(' — ');
   navigator.clipboard.writeText(text).then(()=>{
     showToast('Copied pace info','#7fd97f');
   }).catch(()=>{
@@ -3288,22 +3288,40 @@ function renderTeamStats(){
   const commonNatures=natures.slice(0,6);
   const rareNatures=[...natures].sort((a,b)=>a[1]-b[1]).slice(0,6);
 
-  // Obtained + % died table (combined, richer than a plain list)
-  const obtainedWithPct=obtained.slice(0,12).map(([name,count])=>{
-    const d=deathsMap.get(name)||0;
-    const pctObtained=totalAttemptsFull>0 ? (count/totalAttemptsFull*100) : 0;
-    const pctDied=count>0 ? (d/count*100) : 0;
-    return {name,count,d,pctObtained,pctDied};
+  // Method breakdown — how each species was encountered (Grass/Honey Tree/
+  // Rock Smash/Old Rod/Good Rod/Super Rod), tallied per species.
+  const METHOD_LABELS=['Grass','Honey Tree','Rock Smash','Old Rod','Good Rod','Super Rod'];
+  const methodKey=(m)=>m.replace(/\s+/g,'');
+  const speciesMethodCounts=new Map(); // species -> {MethodKey: count}
+  fullRows.forEach(r=>{
+    const species=r[nameIdx]||'?';
+    const dec=decodeEncounterMethod(r[2]);
+    if(!speciesMethodCounts.has(species)) speciesMethodCounts.set(species,{});
+    const bucket=speciesMethodCounts.get(species);
+    const k=methodKey(dec.label);
+    bucket[k]=(bucket[k]||0)+1;
   });
-  const obtainedRows=obtainedWithPct.map((x,i)=>`
-    <tr>
-      <td style="color:#444">${i+1}</td>
-      <td>${x.name}</td>
-      <td style="color:#59a14f;font-weight:600;text-align:right">${x.count}/${totalAttemptsFull}</td>
-      <td>${pctBar(x.pctObtained,'#59a14f')}</td>
-      <td style="color:#e05555;font-weight:600;text-align:right">${x.d}/${x.count}</td>
-      <td>${pctBar(x.pctDied,'#e05555')}</td>
-    </tr>`).join('');
+
+  // Build the full per-species breakdown (every species, not just top N)
+  statsBreakdownRows=obtained.map(([name,count])=>{
+    const d=deathsMap.get(name)||0;
+    const row={
+      name,
+      obtainedCount:count,
+      obtainedPct: totalAttemptsFull>0 ? (count/totalAttemptsFull*100) : 0,
+      diedCount:d,
+      diedPct: count>0 ? (d/count*100) : 0,
+    };
+    const methodCounts=speciesMethodCounts.get(name)||{};
+    METHOD_LABELS.forEach(label=>{
+      const k=methodKey(label);
+      const c=methodCounts[k]||0;
+      row[k+'Count']=c;
+      row[k+'Pct']= count>0 ? (c/count*100) : 0;
+    });
+    return row;
+  });
+  statsBreakdownMethods=METHOD_LABELS;
 
   // Survived — obtained at least once, never appears in Fallen at all
   const survived=obtained.filter(([name])=>!deathsMap.has(name));
@@ -3315,11 +3333,14 @@ function renderTeamStats(){
     </tr>`).join('');
 
   content.innerHTML=`
-    <div class="a-title" style="font-size:11px;margin-bottom:6px">Obtained vs Died (top 12 by times obtained)</div>
-    <table class="data-table" style="font-size:11px;margin-bottom:20px">
-      <thead><tr><th></th><th>Pokémon</th><th>Obtained</th><th>% of attempts</th><th>Died</th><th>% of times obtained</th></tr></thead>
-      <tbody>${obtainedRows||'<tr><td colspan="6" style="color:#444">No data</td></tr>'}</tbody>
-    </table>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+      <div class="a-title" style="font-size:11px;margin-bottom:0">Full Pokémon Breakdown (${statsBreakdownRows.length} species)</div>
+      <select id="statsSortSelect" onchange="setStatsSortKey(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px">
+        ${buildSortOptions()}
+      </select>
+      <button class="btn" onclick="toggleStatsSortDir()" id="statsSortDirBtn" style="font-size:10px">↓ High → Low</button>
+    </div>
+    <div id="statsBreakdownWrap" style="overflow-x:auto;margin-bottom:20px"></div>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
       ${renderStatList('Top Chestnut Trades', chestnutTally, '#8fc6ff', 10)}
@@ -3346,6 +3367,79 @@ function renderTeamStats(){
       ${totalAttemptsFull} valid attempts detected in Full List. Trades detected via "Traded for X" in column N —
       ${tradedRows.length} matching rows found. Recipients seen: ${[...recipientCounts.entries()].map(([n,c])=>`${n} (${c})`).join(', ')||'none'}.
     </div>`;
+
+  renderBreakdownTable(); // re-render into the now-attached wrap
+}
+
+// Sortable breakdown table state (module-level so sort controls can re-render
+// without recomputing everything from the sheet data each time)
+let statsBreakdownRows=[];
+let statsBreakdownMethods=[];
+let statsSortKey='obtainedCount';
+let statsSortDir='desc';
+
+function buildSortOptions(){
+  const base=[
+    {key:'obtainedCount',label:'Obtained (count)'},
+    {key:'obtainedPct',label:'Obtained (%)'},
+    {key:'diedCount',label:'Died (count)'},
+    {key:'diedPct',label:'Died (%)'},
+  ];
+  const methodOpts=statsBreakdownMethods.flatMap(m=>{
+    const k=m.replace(/\s+/g,'');
+    return [
+      {key:k+'Count',label:`${m} (count)`},
+      {key:k+'Pct',label:`${m} (%)`},
+    ];
+  });
+  return [...base,...methodOpts].map(o=>
+    `<option value="${o.key}" ${statsSortKey===o.key?'selected':''}>${o.label}</option>`
+  ).join('');
+}
+
+function setStatsSortKey(key){ statsSortKey=key; renderBreakdownTable(); }
+function toggleStatsSortDir(){
+  statsSortDir = statsSortDir==='desc' ? 'asc' : 'desc';
+  document.getElementById('statsSortDirBtn').textContent = statsSortDir==='desc' ? '↓ High → Low' : '↑ Low → High';
+  renderBreakdownTable();
+}
+
+function renderBreakdownTable(){
+  const wrap=document.getElementById('statsBreakdownWrap');
+  if(!wrap) return;
+  if(!statsBreakdownRows.length){ wrap.innerHTML='<div style="color:#444;font-size:12px;padding:12px">No data</div>'; return; }
+
+  const sorted=[...statsBreakdownRows].sort((a,b)=>{
+    const diff=(a[statsSortKey]||0)-(b[statsSortKey]||0);
+    return statsSortDir==='desc' ? -diff : diff;
+  });
+
+  const methodHeaders=statsBreakdownMethods.map(m=>`<th style="text-align:right">${m}</th>`).join('');
+  const rows=sorted.map((r,i)=>{
+    const methodCells=statsBreakdownMethods.map(m=>{
+      const k=m.replace(/\s+/g,'');
+      const c=r[k+'Count'], p=r[k+'Pct'];
+      const color=c>0?'#ccc':'#3a3a3a';
+      return `<td style="text-align:right;color:${color};white-space:nowrap">${c>0?`${c} <span style="color:#666;font-size:9px">(${Math.round(p)}%)</span>`:'—'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="color:#444">${i+1}</td>
+      <td style="white-space:nowrap">${r.name}</td>
+      <td style="color:#59a14f;font-weight:600;text-align:right;white-space:nowrap">${r.obtainedCount}</td>
+      <td>${pctBar(r.obtainedPct,'#59a14f')}</td>
+      <td style="color:#e05555;font-weight:600;text-align:right;white-space:nowrap">${r.diedCount}</td>
+      <td>${pctBar(r.diedPct,'#e05555')}</td>
+      ${methodCells}
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML=`
+    <table class="data-table" style="font-size:11px">
+      <thead><tr>
+        <th></th><th>Pokémon</th><th>Obtained</th><th>%</th><th>Died</th><th>%</th>${methodHeaders}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 // ─────────────────────────────────────────────────────────────────
