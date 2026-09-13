@@ -15,4 +15,13 @@ const GH_FILE='save.json';              // filename in the repo
 const TEAM_SHEET_ID='1UVjtaEREAyYAMTPwyuNTrvlbESYtsWy956Cqj-guWPE';
 const TEAM_SHEET_GID='825940800';        // gid of "Full List" tab
 const TEAM_SHEET_GID_FALLEN='59463193';  // gid of "Fallen" tab
-const TEAM_CREDIT='/u/OpticalPlays'; // ← put their actual name/handle here
+const TEAM_CREDIT = '/u/OpticalPlays'; // ← put their actual name/handle here
+
+// Combine specific Pokémon together in the Stats tab (Obtained/Died/Method
+// breakdown, Trades, Natures) — e.g. treat a baby form and its evolution as
+// one entry. Left-hand name gets folded INTO the right-hand name.
+// Example: { "Azurill": "Azurill/Azumarill", "Azumarill": "Azurill/Azumarill" }
+const SPECIES_ALIASES={
+   "Azurill": "Azurill/Azumarill",
+   "Azumarill": "Azurill/Azumarill",
+};

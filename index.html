@@ -3181,14 +3181,22 @@ function showMonDetail(event, name, nature, statsJsonEscaped){
 // ─────────────────────────────────────────────────────────────────
 // ADDITIONAL STATS — computed from Full List + Fallen
 // ─────────────────────────────────────────────────────────────────
-function tallyColumn(rows, idx){
+function tallyColumn(rows, idx, transform){
   const counts=new Map();
   rows.forEach(r=>{
-    const v=(r[idx]||'').trim();
+    let v=(r[idx]||'').trim();
     if(!v) return;
+    if(transform) v=transform(v);
     counts.set(v, (counts.get(v)||0)+1);
   });
   return [...counts.entries()].sort((a,b)=>b[1]-a[1]);
+}
+
+// Folds species together per SPECIES_ALIASES in config.js — e.g. combine a
+// baby form and its evolution into one row across all Stats tallies.
+function normalizeSpecies(name){
+  const trimmed=(name||'').trim();
+  return (typeof SPECIES_ALIASES!=='undefined' && SPECIES_ALIASES[trimmed]) || trimmed;
 }
 
 function findHeaderIdx(headers, name){
@@ -3205,11 +3213,11 @@ function findPokemonNameIdx(headers, fallbackIdx){
 
 function pctBar(pct, color){
   const clamped=Math.max(0,Math.min(100,pct));
-  return `<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+  return `<div style="display:flex;align-items:center;gap:8px;justify-content:center">
     <div style="width:70px;background:#1a1a1a;border-radius:3px;height:10px;overflow:hidden;flex-shrink:0">
       <div style="width:${clamped}%;height:100%;background:${color}"></div>
     </div>
-    <span style="color:${color};font-weight:600;min-width:34px;text-align:right">${Math.round(pct)}%</span>
+    <span style="color:${color};font-weight:600;min-width:34px;text-align:left">${Math.round(pct)}%</span>
   </div>`;
 }
 
@@ -3253,11 +3261,11 @@ function renderTeamStats(){
   const totalAttemptsFull=new Set(fullRows.map(r=>full.groupKeyNumber(r[0]))).size;
 
   // Most obtained species (Full List)
-  const obtained=tallyColumn(fullRows, nameIdx);
+  const obtained=tallyColumn(fullRows, nameIdx, normalizeSpecies);
   const obtainedMap=new Map(obtained);
 
   // Highest deaths (Fallen)
-  const deaths=tallyColumn(fallenRows, fallenNameIdx);
+  const deaths=tallyColumn(fallenRows, fallenNameIdx, normalizeSpecies);
   const deathsMap=new Map(deaths);
 
   // Traded — scan Notes for "Traded for X"
@@ -3269,7 +3277,7 @@ function renderTeamStats(){
     const m=(r[notesIdx]||'').match(tradeRe);
     const recipient=m?m[1].trim():'?';
     recipientCounts.set(recipient,(recipientCounts.get(recipient)||0)+1);
-    const species=r[nameIdx]||'?';
+    const species=normalizeSpecies(r[nameIdx]||'?');
     allTradedSpecies.push(species);
     if(/^chestnut$/i.test(recipient)) chestnutSpecies.push(species);
     if(/^nomu$/i.test(recipient)) nomuSpecies.push(species);
@@ -3294,7 +3302,7 @@ function renderTeamStats(){
   const methodKey=(m)=>m.replace(/\s+/g,'');
   const speciesMethodCounts=new Map(); // species -> {MethodKey: count}
   fullRows.forEach(r=>{
-    const species=r[nameIdx]||'?';
+    const species=normalizeSpecies(r[nameIdx]||'?');
     const dec=decodeEncounterMethod(r[2]);
     if(!speciesMethodCounts.has(species)) speciesMethodCounts.set(species,{});
     const bucket=speciesMethodCounts.get(species);
@@ -3414,21 +3422,21 @@ function renderBreakdownTable(){
     return statsSortDir==='desc' ? -diff : diff;
   });
 
-  const methodHeaders=statsBreakdownMethods.map(m=>`<th style="text-align:right">${m}</th>`).join('');
+  const methodHeaders=statsBreakdownMethods.map(m=>`<th style="text-align:center">${m}</th>`).join('');
   const rows=sorted.map((r,i)=>{
     const methodCells=statsBreakdownMethods.map(m=>{
       const k=m.replace(/\s+/g,'');
       const c=r[k+'Count'], p=r[k+'Pct'];
       const color=c>0?'#ccc':'#3a3a3a';
-      return `<td style="text-align:right;color:${color};white-space:nowrap">${c>0?`${c} <span style="color:#666;font-size:9px">(${Math.round(p)}%)</span>`:'—'}</td>`;
+      return `<td style="text-align:center;color:${color};white-space:nowrap">${c>0?`${c} <span style="color:#666;font-size:9px">(${Math.round(p)}%)</span>`:'—'}</td>`;
     }).join('');
     return `<tr>
-      <td style="color:#444">${i+1}</td>
+      <td style="color:#444;text-align:center">${i+1}</td>
       <td style="white-space:nowrap">${r.name}</td>
-      <td style="color:#59a14f;font-weight:600;text-align:right;white-space:nowrap">${r.obtainedCount}</td>
-      <td>${pctBar(r.obtainedPct,'#59a14f')}</td>
-      <td style="color:#e05555;font-weight:600;text-align:right;white-space:nowrap">${r.diedCount}</td>
-      <td>${pctBar(r.diedPct,'#e05555')}</td>
+      <td style="color:#59a14f;font-weight:600;text-align:center;white-space:nowrap">${r.obtainedCount}</td>
+      <td style="text-align:center">${pctBar(r.obtainedPct,'#59a14f')}</td>
+      <td style="color:#e05555;font-weight:600;text-align:center;white-space:nowrap">${r.diedCount}</td>
+      <td style="text-align:center">${pctBar(r.diedPct,'#e05555')}</td>
       ${methodCells}
     </tr>`;
   }).join('');
@@ -3436,7 +3444,7 @@ function renderBreakdownTable(){
   wrap.innerHTML=`
     <table class="data-table" style="font-size:11px">
       <thead><tr>
-        <th></th><th>Pokémon</th><th>Obtained</th><th>%</th><th>Died</th><th>%</th>${methodHeaders}
+        <th></th><th>Pokémon</th><th style="text-align:center">Obtained</th><th style="text-align:center">%</th><th style="text-align:center">Died</th><th style="text-align:center">%</th>${methodHeaders}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
