@@ -22,6 +22,7 @@ const TEAM_CREDIT = '/u/OpticalPlays'; // ← put their actual name/handle here
 // one entry. Left-hand name gets folded INTO the right-hand name.
 // Example: { "Azurill": "Azurill/Azumarill", "Azumarill": "Azurill/Azumarill" }
 const SPECIES_ALIASES={
-   "Azurill": "Azurill/Azumarill",
-   "Azumarill": "Azurill/Azumarill",
+   "Azurill": "Azurill/Azumarill/Marill",
+   "Azumarill": "Azurill/Azumarill/Marill",
+   "Marill": "Azurill/Azumarill/Marill",
 };
