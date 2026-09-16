@@ -26,15 +26,15 @@ const SPECIES_ALIASES={
    "Azumarill": "Azurill/Azumarill/Marill",
   "Marill": "Azurill/Azumarill/Marill",
 
-  "Prinplup": "Piplup/Prinplup/Empoleon",
-  "Piplup": "Piplup/Prinplup/Empoleon",
-  "Empoleon": "Piplup/Prinplup/Empoleon",
+  "Prinplup": "Piplup",
+  "Piplup": "Piplup",
+  "Empoleon": "Piplup",
 
-  "Grotle": "Turtwig/Grotle/Torterra",
-  "Turtwig": "Turtwig/Grotle/Torterra",
-  "Torterra": "Turtwig/Grotle/Torterra",
+  "Grotle": "Turtwig",
+  "Turtwig": "Turtwig",
+  "Torterra": "Turtwig",
 
-  "Monferno": "Chimchar/Monferno/Infernape",
-  "Chimchar": "Chimchar/Monferno/Infernape",
-  "Infernape": "Chimchar/Monferno/Infernape"
+  "Monferno": "Chimchar",
+  "Chimchar": "Chimchar",
+  "Infernape": "Chimchar"
 };

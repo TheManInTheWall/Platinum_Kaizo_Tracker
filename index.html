@@ -168,6 +168,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <h1>Platinum Kaizo</h1>
   <div class="attempt-pills" id="attemptPills"></div>
   <button class="btn b" onclick="showNewAttemptModal()">+ New attempt</button>
+  <button class="btn g" onclick="showNewMonModal()" title="Log a newly obtained Pokémon and copy the stats line">+ New Pokémon</button>
   <button class="btn" onclick="undoDeath()" id="undoBtn" disabled title="Undo last death recorded">Undo death</button>
   <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:#aaa;flex-shrink:0;margin-left:4px">
     <input type="checkbox" id="globalLosses" onchange="toggleLosses()" style="accent-color:#e05555">
@@ -554,7 +555,8 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 <div class="modal-bg" id="newMonModalBg" style="display:none">
   <div class="modal" style="width:380px">
     <h3>New Pokémon Obtained</h3>
-    <input id="newMonName" type="text" placeholder="Pokémon name…" style="margin-bottom:10px" />
+    <input id="newMonName" list="newMonNameList" type="text" placeholder="Pokémon name…" style="margin-bottom:10px" />
+    <datalist id="newMonNameList"></datalist>
     <select id="newMonMethod" style="width:100%;background:#111;border:1px solid #333;border-radius:5px;padding:6px 10px;color:#ddd;font-size:13px;margin-bottom:12px">
       <option value="Grass">Grass</option>
       <option value="Honey Tree">Honey Tree</option>
@@ -3218,9 +3220,26 @@ function tallyColumn(rows, idx, transform){
 
 // Folds species together per SPECIES_ALIASES in config.js — e.g. combine a
 // baby form and its evolution into one row across all Stats tallies.
+// Case-insensitive: "luvdisc", "LUVDISC" and "Luvdisc" all resolve to the
+// same canonical entry, so sheet casing inconsistencies don't split rows.
+let _speciesAliasLookup=null;
+function getSpeciesAliasLookup(){
+  if(_speciesAliasLookup) return _speciesAliasLookup;
+  _speciesAliasLookup=new Map();
+  if(typeof SPECIES_ALIASES!=='undefined'){
+    Object.entries(SPECIES_ALIASES).forEach(([from,to])=>{
+      _speciesAliasLookup.set(from.trim().toLowerCase(), to);
+    });
+  }
+  return _speciesAliasLookup;
+}
 function normalizeSpecies(name){
   const trimmed=(name||'').trim();
-  return (typeof SPECIES_ALIASES!=='undefined' && SPECIES_ALIASES[trimmed]) || trimmed;
+  if(!trimmed) return '';
+  const alias=getSpeciesAliasLookup().get(trimmed.toLowerCase());
+  if(alias) return alias;
+  // No alias — canonicalise casing so LUVDISC / Luvdisc / luvdisc unify.
+  return trimmed.charAt(0).toUpperCase()+trimmed.slice(1).toLowerCase();
 }
 
 function findHeaderIdx(headers, name){
@@ -3327,35 +3346,69 @@ function renderTeamStats(){
   let starterHtml='<div style="color:#444;font-size:11px">Could not find a "Met Location" column to detect starters.</div>';
   if(locationIdx>=0){
     const starterRows=fullRows.filter(r=>/\(starter\)/i.test(r[locationIdx]||''));
-    const starterTally=tallyList(starterRows.map(r=>normalizeSpecies(r[nameIdx]||'?')));
     const hasIVs=ivIdxsFull.every(i=>i>=0);
-    let avgIV=null;
-    if(hasIVs&&starterRows.length){
-      const sum=starterRows.reduce((s,r)=>s+ivSumForRow(r,ivIdxsFull),0);
-      avgIV=Math.round(sum/starterRows.length*100)/100;
-    }
-    const starterDied=starterRows.filter(r=>{
+
+    // Join each starter to how far that attempt actually got, using the
+    // tracker's own save data (sheet attempt number ↔ tracker attempt position).
+    const perStarter=new Map(); // species -> {picks, reaches[], ivSums[], died}
+    starterRows.forEach(r=>{
       const sp=normalizeSpecies(r[nameIdx]||'?');
-      return deathsMap.has(sp);
-    }).length;
-    const starterRowsHtml=starterTally.map(([name,count],i)=>{
-      const pct=starterRows.length?Math.round(count/starterRows.length*100):0;
-      return `<tr>
-        <td style="color:#444;width:20px">${i+1}</td>
-        <td>${name}</td>
-        <td style="color:#59a14f;font-weight:600;text-align:right">${count}</td>
-        <td style="color:#666;text-align:right">${pct}%</td>
-      </tr>`;
-    }).join('');
+      if(!perStarter.has(sp)) perStarter.set(sp,{picks:0,reaches:[],ivSums:[],died:0});
+      const e=perStarter.get(sp);
+      e.picks++;
+      if(hasIVs) e.ivSums.push(ivSumForRow(r,ivIdxsFull));
+      if(deathsMap.has(sp)) e.died++;
+      const attemptNum=full.groupKeyNumber(r[0]);
+      if(attemptNum!==null){
+        const att=state.attempts[attemptNum-1]; // sheet A1 == tracker attempt #1
+        if(att) e.reaches.push(effectiveReach(att));
+      }
+    });
+
+    const avg=(arr)=>arr.length?arr.reduce((s,x)=>s+x,0)/arr.length:null;
+    const starterStats=[...perStarter.entries()].map(([name,e])=>({
+      name,
+      picks:e.picks,
+      pickPct: starterRows.length?Math.round(e.picks/starterRows.length*100):0,
+      avgReach: avg(e.reaches),
+      bestReach: e.reaches.length?Math.max(...e.reaches):null,
+      worstReach: e.reaches.length?Math.min(...e.reaches):null,
+      avgIV: avg(e.ivSums),
+      died:e.died,
+    })).sort((a,b)=>(b.avgReach??-1)-(a.avgReach??-1));
+
+    const fmtReach=(idx)=> idx===null||idx===undefined ? '—'
+      : `#${Math.round(idx)+1} <span style="color:#555;font-size:9px">${TRAINERS[Math.round(idx)]?.n||''}</span>`;
+
+    const matchedRuns=starterStats.reduce((s,x)=>s+(x.avgReach!==null?1:0),0);
+    const starterRowsHtml=starterStats.map((x,i)=>`
+      <tr>
+        <td style="color:#444;text-align:center">${i+1}</td>
+        <td style="white-space:nowrap">${x.name}</td>
+        <td style="color:#59a14f;font-weight:600;text-align:center">${x.picks}</td>
+        <td style="color:#666;text-align:center">${x.pickPct}%</td>
+        <td style="color:#8fc6ff;font-weight:600;text-align:center;white-space:nowrap">${x.avgReach!==null?fmtReach(x.avgReach):'—'}</td>
+        <td style="color:#7fd97f;text-align:center;white-space:nowrap">${fmtReach(x.bestReach)}</td>
+        <td style="color:#e05555;text-align:center;white-space:nowrap">${fmtReach(x.worstReach)}</td>
+        <td style="color:#edc948;text-align:center">${x.avgIV!==null?Math.round(x.avgIV*100)/100:'—'}</td>
+        <td style="color:#e05555;text-align:center">${x.died}</td>
+      </tr>`).join('');
+
     starterHtml=`
-      <div class="a-title" style="font-size:11px">Starter Picks (${starterRows.length} attempts)</div>
-      <table class="data-table" style="font-size:11px;width:auto;max-width:320px">
-        <thead><tr><th></th><th>Starter</th><th style="text-align:right">Times</th><th style="text-align:right">%</th></tr></thead>
-        <tbody>${starterRowsHtml||'<tr><td colspan="4" style="color:#444">No starters detected</td></tr>'}</tbody>
+      <div class="a-title" style="font-size:11px">Starter Performance (${starterRows.length} attempts with a starter logged)</div>
+      <table class="data-table" style="font-size:11px">
+        <thead><tr>
+          <th></th><th>Starter</th>
+          <th style="text-align:center">Picks</th><th style="text-align:center">%</th>
+          <th style="text-align:center">Avg Reach</th><th style="text-align:center">Furthest</th><th style="text-align:center">Worst</th>
+          <th style="text-align:center">Avg IV</th><th style="text-align:center">Died</th>
+        </tr></thead>
+        <tbody>${starterRowsHtml||'<tr><td colspan="9" style="color:#444">No starters detected</td></tr>'}</tbody>
       </table>
       <div style="font-size:10px;color:#666;margin-top:6px">
-        ${avgIV!==null?`Avg starter IV sum: <b style="color:#edc948">${avgIV}</b>. `:''}
-        Starters that eventually died: <b style="color:#e05555">${starterDied}/${starterRows.length}</b>.
+        Reach = how far that attempt got in your tracker (trainer #, gym-leader-skip adjusted).
+        Sorted by average reach — the starter that carried runs furthest is on top.
+        ${matchedRuns===0?'<span style="color:#e0a83a">No sheet attempts matched tracker attempts — reach columns will stay empty until both line up.</span>':''}
       </div>`;
   }
 
@@ -3451,8 +3504,7 @@ function renderBreakdownView(){
 
   content.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <button class="btn b" onclick="showNewMonModal()" style="font-size:11px">+ New Pokémon Obtained</button>
-      <div class="a-title" style="font-size:11px;margin-bottom:0;margin-left:8px">Full Pokémon Breakdown (${statsBreakdownRows.length} species)</div>
+      <div class="a-title" style="font-size:11px;margin-bottom:0">Full Pokémon Breakdown (${statsBreakdownRows.length} species)</div>
       <select id="statsSortSelect" onchange="setStatsSortKey(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px">
         ${buildSortOptions()}
       </select>
@@ -3473,6 +3525,28 @@ function ordinal(n){
 function showNewMonModal(){
   document.getElementById('newMonName').value='';
   document.getElementById('newMonModalBg').style.display='flex';
+  // Populate autocomplete from whatever Full List data we already have
+  const ds=TEAM_DATASETS.fulllist;
+  const list=document.getElementById('newMonNameList');
+  if(list){
+    if(ds.cache){
+      const names=[...new Set(ds.cache
+        .filter(r=>ds.groupKeyValid(r[0]||''))
+        .map(r=>normalizeSpecies(r[4]||''))
+        .filter(Boolean))].sort();
+      list.innerHTML=names.map(n=>`<option value="${n}">`).join('');
+    } else {
+      // Not loaded yet — fetch in the background so it's ready next time
+      loadTeamDatasetSilently(ds).then(()=>{
+        if(!ds.cache) return;
+        const names=[...new Set(ds.cache
+          .filter(r=>ds.groupKeyValid(r[0]||''))
+          .map(r=>normalizeSpecies(r[4]||''))
+          .filter(Boolean))].sort();
+        list.innerHTML=names.map(n=>`<option value="${n}">`).join('');
+      });
+    }
+  }
   setTimeout(()=>document.getElementById('newMonName').focus(),50);
 }
 function closeNewMonModal(){ document.getElementById('newMonModalBg').style.display='none'; }
@@ -3516,11 +3590,30 @@ async function confirmNewMon(){
   }
 
   if(resultEl) resultEl.innerHTML=text;
+  else showNewMonResultPanel(text);
   navigator.clipboard.writeText(text).then(()=>{
     showToast('Copied!','#7fd97f');
   }).catch(()=>{
     showToast('Copy failed — clipboard blocked','#e05555');
   });
+}
+
+// Shows the generated line in a dismissable floating panel, for when the
+// button is used from a tab that has no inline result area.
+function showNewMonResultPanel(text){
+  document.getElementById('newMonResultPanel')?.remove();
+  const div=document.createElement('div');
+  div.id='newMonResultPanel';
+  div.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:999;'+
+    'background:#1a1a1a;border:1px solid #3a6ea5;border-radius:6px;padding:12px 16px;'+
+    'font-size:12px;color:#cfe4ff;max-width:640px;box-shadow:0 4px 20px rgba(0,0,0,.6)';
+  div.innerHTML=`<div style="margin-bottom:8px">${text}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" style="font-size:10px" onclick="navigator.clipboard.writeText(this.closest('#newMonResultPanel').dataset.text);showToast('Copied!','#7fd97f')">Copy again</button>
+      <button class="btn" style="font-size:10px" onclick="this.closest('#newMonResultPanel').remove()">Dismiss</button>
+    </div>`;
+  div.dataset.text=text;
+  document.body.appendChild(div);
 }
 
 function buildSortOptions(){
