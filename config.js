@@ -24,5 +24,17 @@ const TEAM_CREDIT = '/u/OpticalPlays'; // ← put their actual name/handle here
 const SPECIES_ALIASES={
    "Azurill": "Azurill/Azumarill/Marill",
    "Azumarill": "Azurill/Azumarill/Marill",
-   "Marill": "Azurill/Azumarill/Marill",
+  "Marill": "Azurill/Azumarill/Marill",
+
+  "Prinplup": "Piplup/Prinplup/Empoleon",
+  "Piplup": "Piplup/Prinplup/Empoleon",
+  "Empoleon": "Piplup/Prinplup/Empoleon",
+
+  "Grotle": "Turtwig/Grotle/Torterra",
+  "Turtwig": "Turtwig/Grotle/Torterra",
+  "Torterra": "Turtwig/Grotle/Torterra",
+
+  "Monferno": "Chimchar/Monferno/Infernape",
+  "Chimchar": "Chimchar/Monferno/Infernape",
+  "Infernape": "Chimchar/Monferno/Infernape"
 };
