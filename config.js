@@ -17,6 +17,12 @@ const TEAM_SHEET_GID='825940800';        // gid of "Full List" tab
 const TEAM_SHEET_GID_FALLEN='59463193';  // gid of "Fallen" tab
 const TEAM_CREDIT = '/u/OpticalPlays'; // ← put their actual name/handle here
 
+// Catch Log tab: how often (in minutes) to auto-check the sheet for newly
+// added Pokémon while that tab is open. Set to 0 to disable auto-polling
+// entirely (manual "Check now" still works).
+const TEAM_AUTOLOG_INTERVAL_MIN=5;
+
+
 // Combine specific Pokémon together in the Stats tab (Obtained/Died/Method
 // breakdown, Trades, Natures) — e.g. treat a baby form and its evolution as
 // one entry. Left-hand name gets folded INTO the right-hand name.

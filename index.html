@@ -481,6 +481,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="navtab" id="teamSubtab-ivbyattempt" onclick="setTeamView('ivbyattempt')" style="font-size:11px;padding:6px 16px">IVs by Attempt</div>
     <div class="navtab" id="teamSubtab-breakdown" onclick="setTeamView('breakdown')" style="font-size:11px;padding:6px 16px">Breakdown</div>
     <div class="navtab" id="teamSubtab-species" onclick="setTeamView('species')" style="font-size:11px;padding:6px 16px">Species History</div>
+    <div class="navtab" id="teamSubtab-catchlog" onclick="setTeamView('catchlog')" style="font-size:11px;padding:6px 16px">Catch Log</div>
     <div class="navtab" id="teamSubtab-stats" onclick="setTeamView('stats')" style="font-size:11px;padding:6px 16px">Stats</div>
   </div>
   <div id="teamRawControls" style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -2738,7 +2739,7 @@ let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'stats'
 
 function setTeamView(view){
   teamView=view;
-  ['fulllist','fallen','ivbyattempt','breakdown','species','stats'].forEach(v=>{
+  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','stats'].forEach(v=>{
     document.getElementById(`teamSubtab-${v}`)?.classList.toggle('active',v===view);
   });
 
@@ -2811,6 +2812,7 @@ function renderTeamComputedView(){
   if(teamView==='ivbyattempt') renderIVsByAttempt();
   else if(teamView==='breakdown') renderBreakdownView();
   else if(teamView==='species') renderSpeciesHistoryView();
+  else if(teamView==='catchlog') renderCatchLogView();
   else if(teamView==='stats') renderTeamStats();
 }
 
@@ -3345,7 +3347,7 @@ function renderTeamStats(){
   // Starter stats — rows whose Met Location mentions "(Starter)"
   let starterHtml='<div style="color:#444;font-size:11px">Could not find a "Met Location" column to detect starters.</div>';
   if(locationIdx>=0){
-    const starterRows=fullRows.filter(r=>/\(starter\)/i.test(r[locationIdx]||''));
+    const starterRows=fullRows.filter(r=>/\(starter\)/i.test(r[locationIdx]||'') && (r[nameIdx]||'').trim()!=='');
     const hasIVs=ivIdxsFull.every(i=>i>=0);
 
     // Join each starter to how far that attempt actually got, using the
@@ -3813,6 +3815,160 @@ function renderSpeciesHistoryTable(){
 }
 
 // ─────────────────────────────────────────────────────────────────
+// CATCH LOG — polls the sheet for newly added Pokémon and auto-generates
+// the same "We have obtained X..." message the New Pokémon button makes.
+// ─────────────────────────────────────────────────────────────────
+let teamAutoLogEntries=JSON.parse(localStorage.getItem('team_catch_log')||'[]');
+let teamLastSeenCatchCount=parseInt(localStorage.getItem('team_last_seen_catch_count')||'0',10);
+let teamAutoPollTimer=null;
+let teamAutoPollEnabled=localStorage.getItem('team_autopoll_enabled')==='true';
+let teamCatchLogBusy=false;
+
+function saveCatchLogState(){
+  localStorage.setItem('team_catch_log', JSON.stringify(teamAutoLogEntries.slice(0,200)));
+  localStorage.setItem('team_last_seen_catch_count', String(teamLastSeenCatchCount));
+}
+
+// Walks every complete (non-blank-name) row in order, tracking running
+// per-species and per-species+method counts as it goes, so each row knows
+// "this was the Nth time" at the point it happened — not just the final total.
+function computeRunningCatchStats(rows, nameIdx){
+  const runningObtained=new Map();
+  const runningMethod=new Map();
+  return rows.map((r,idx)=>{
+    const species=normalizeSpecies(r[nameIdx]||'');
+    const dec=decodeEncounterMethod(r[2]);
+    const obtainedCount=(runningObtained.get(species)||0)+1;
+    runningObtained.set(species,obtainedCount);
+    const mk=species+'|'+dec.label;
+    const methodCount=(runningMethod.get(mk)||0)+1;
+    runningMethod.set(mk,methodCount);
+    return {idx, row:r, species, method:dec.label, obtainedCount, methodCount};
+  });
+}
+
+async function pollForNewCatches(manual){
+  if(teamCatchLogBusy) return;
+  teamCatchLogBusy=true;
+  const btn=document.getElementById('catchLogCheckBtn');
+  if(btn&&manual){ btn.disabled=true; btn.textContent='Checking…'; }
+
+  try{
+    const ds=TEAM_DATASETS.fulllist;
+    // Always hit the network fresh — this is specifically about detecting
+    // sheet changes, so a cached copy defeats the purpose.
+    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
+    const res=await fetch(url,{cache:'no-cache'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text=await res.text();
+    const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
+    if(!rows.length) throw new Error('Empty response');
+    const headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
+    const dataRows=rows.slice(1).map(r=>r.slice(0,TEAM_MAX_COLS)).filter(isMeaningfulDataRow);
+    let lastVal='';
+    dataRows.forEach(r=>{
+      if(r[0]&&r[0].trim()!==''){ lastVal=r[0].trim(); r[0]=lastVal; }
+      else { r[0]=lastVal; }
+    });
+    // Refresh the shared cache too, so other tabs see the latest data
+    ds.headers=headers;
+    ds.cache=dataRows;
+
+    const nameIdx=4;
+    const fullRows=dataRows.filter(r=>ds.groupKeyValid(r[0]||'') && (r[nameIdx]||'').trim()!=='');
+    const totalAttemptsFull=new Set(fullRows.map(r=>ds.groupKeyNumber(r[0]))).size;
+    const running=computeRunningCatchStats(fullRows, nameIdx);
+
+    if(running.length>teamLastSeenCatchCount){
+      const newOnes=running.slice(teamLastSeenCatchCount);
+      newOnes.forEach(entry=>{
+        // Find the previous occurrence of this species (if any) for "last time"
+        let lastAttemptNum=null;
+        for(let j=entry.idx-1;j>=0;j--){
+          if(running[j].species===entry.species){
+            lastAttemptNum=ds.groupKeyNumber(running[j].row[0]);
+            break;
+          }
+        }
+        const pctAttempts=totalAttemptsFull>0?Math.round(entry.obtainedCount/totalAttemptsFull*100):0;
+        let text=`We have obtained ${entry.species} for the ${ordinal(entry.obtainedCount)} time (${pctAttempts}%). We encountered ${entry.methodCount} out of ${entry.obtainedCount} via ${entry.method} like now.`;
+        if(lastAttemptNum!==null){
+          text+=` Last time we got ${entry.species} was in ${ds.formatGroupLabelFromNumber(lastAttemptNum)}.`;
+        }
+        teamAutoLogEntries.unshift({time:Date.now(), text, attempt:ds.formatGroupLabel(entry.row[0])});
+      });
+      teamLastSeenCatchCount=running.length;
+      saveCatchLogState();
+    }
+
+    if(teamView==='catchlog') renderCatchLogView();
+  }catch(e){
+    console.error('Catch log poll failed:',e);
+    if(manual) showToast('Could not check the sheet','#e05555');
+  }
+
+  teamCatchLogBusy=false;
+  if(btn&&manual){ btn.disabled=false; btn.textContent='Check now'; }
+}
+
+function toggleAutoPoll(){
+  teamAutoPollEnabled=document.getElementById('catchLogAutoToggle').checked;
+  localStorage.setItem('team_autopoll_enabled', String(teamAutoPollEnabled));
+  setupCatchLogTimer();
+}
+
+function setupCatchLogTimer(){
+  if(teamAutoPollTimer){ clearInterval(teamAutoPollTimer); teamAutoPollTimer=null; }
+  if(teamAutoPollEnabled && TEAM_AUTOLOG_INTERVAL_MIN>0){
+    teamAutoPollTimer=setInterval(()=>pollForNewCatches(false), TEAM_AUTOLOG_INTERVAL_MIN*60*1000);
+  }
+}
+
+function clearCatchLog(){
+  if(!confirm('Clear the entire catch log?')) return;
+  teamAutoLogEntries=[];
+  saveCatchLogState();
+  renderCatchLogView();
+}
+
+function copyLogEntry(idx){
+  const entry=teamAutoLogEntries[idx];
+  if(!entry) return;
+  navigator.clipboard.writeText(entry.text).then(()=>showToast('Copied!','#7fd97f'));
+}
+
+function renderCatchLogView(){
+  const content=document.getElementById('teamContent');
+  if(!content) return;
+
+  const entriesHtml=teamAutoLogEntries.map((e,i)=>{
+    const dt=new Date(e.time);
+    const timeStr=dt.toLocaleString();
+    return `<div style="background:#111;border:1px solid #222;border-radius:6px;padding:10px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+        <div style="font-size:12px;color:#cfe4ff">${e.text}</div>
+        <button class="btn" style="font-size:10px;flex-shrink:0" onclick="copyLogEntry(${i})">Copy</button>
+      </div>
+      <div style="font-size:9px;color:#444;margin-top:6px">${timeStr}</div>
+    </div>`;
+  }).join('');
+
+  content.innerHTML=`
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn b" id="catchLogCheckBtn" onclick="pollForNewCatches(true)" style="font-size:11px">Check now</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;cursor:pointer">
+        <input type="checkbox" id="catchLogAutoToggle" onchange="toggleAutoPoll()" ${teamAutoPollEnabled?'checked':''} style="accent-color:#3a6ea5">
+        Auto-check every ${TEAM_AUTOLOG_INTERVAL_MIN} min while this tab is open
+      </label>
+      <button class="btn" onclick="clearCatchLog()" style="font-size:10px;margin-left:auto;color:#888">Clear log</button>
+    </div>
+    <div style="font-size:10px;color:#444;margin-bottom:14px">
+      ${teamLastSeenCatchCount} catches tracked so far. New entries appear here automatically whenever the sheet gets updated with a fresh row.
+    </div>
+    <div>${entriesHtml||'<div style="color:#444;font-size:12px;padding:20px">No log entries yet — hit "Check now" or wait for auto-check.</div>'}</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
 // BOSSES
 // ─────────────────────────────────────────────────────────────────
 function renderBosses(){
@@ -4124,6 +4280,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     showToast('Loaded save from repo','#7fd97f');
   }
   setupRepoCheck();
+  setupCatchLogTimer();
 });
 </script>
 </body>
