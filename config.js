@@ -532,7 +532,6 @@ const SPECIES_ALIASES = {
   "Shaymin": "Shaymin",
   "Arceus": "Arceus",
 
-
 // funny names
   "Wigglingtuff": "Wigglytuff",
   "Seson pas": "Nosepass",
@@ -540,7 +539,8 @@ const SPECIES_ALIASES = {
   "Delcatty 🎤": "Delcatty",
   " 	🍔 spinda 🍔": "Spinda",
   "Peter 🕷": "Butterfree",
-
+  "John pork": "Grumpig",
+  "Peshal": "Walrein"
 
 }
 
