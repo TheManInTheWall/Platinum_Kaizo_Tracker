@@ -530,7 +530,18 @@ const SPECIES_ALIASES = {
   "Manaphy": "Manaphy",
   "Darkrai": "Darkrai",
   "Shaymin": "Shaymin",
-  "Arceus": "Arceus"
+  "Arceus": "Arceus",
+
+
+// funny names
+  "Wigglingtuff": "Wigglytuff",
+  "Seson pas": "Nosepass",
+  "On ra": "Aggron",
+  "Delcatty 🎤": "Delcatty",
+  " 	🍔 spinda 🍔": "Spinda",
+  "Peter 🕷": "Butterfree",
+
+
 }
 
 // Pure DISPLAY layer on top of the above — the real/combined species name is
