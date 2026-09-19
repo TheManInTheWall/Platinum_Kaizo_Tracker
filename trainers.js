@@ -446,7 +446,7 @@ const BOSSES = [
   "Barry #4 (Chimchar, Pastoria Gym)",
   "Barry #5 (Chimchar, Canalave Bridge)",
   "Barry #6 (Chimchar)",
-  "Gambler John Keating (SUPERBOSS)*",
+  "Dragon Tamer Drax",
   "Scientist Jonathon",
   "Cyclist Karen",
 ];
