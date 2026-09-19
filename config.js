@@ -27,7 +27,7 @@ const TEAM_AUTOLOG_INTERVAL_MIN=5;
 // breakdown, Trades, Natures) — e.g. treat a baby form and its evolution as
 // one entry. Left-hand name gets folded INTO the right-hand name.
 // Example: { "Azurill": "Azurill/Azumarill", "Azumarill": "Azurill/Azumarill" }
-export const SPECIES_ALIASES = {
+const SPECIES_ALIASES = {
   // Gen 1
   "Bulbasaur": "Venusaur",
   "Ivysaur": "Venusaur",
@@ -532,6 +532,7 @@ export const SPECIES_ALIASES = {
   "Shaymin": "Shaymin",
   "Arceus": "Arceus"
 }
+
 // Pure DISPLAY layer on top of the above — the real/combined species name is
 // still used for matching, tallying, and searching everywhere; only the text
 // shown to you gets swapped for the nickname. Key by the name SPECIES_ALIASES
