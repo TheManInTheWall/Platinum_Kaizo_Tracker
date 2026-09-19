@@ -17,6 +17,13 @@ const TEAM_SHEET_GID='825940800';        // gid of "Full List" tab
 const TEAM_SHEET_GID_FALLEN='59463193';  // gid of "Fallen" tab
 const TEAM_CREDIT = '/u/OpticalPlays'; // ← put their actual name/handle here
 
+// A separate spreadsheet someone else maintains — tracks kills credited to
+// YOUR Pokémon (frags), not deaths/catches. Different document entirely.
+const KILLS_SHEET_ID='1TyJhBo9deFuycwm_k6vt80QobwKNzvTMh-g78npnkNU';
+const KILLS_SHEET_GID='5688771';
+const KILLS_CREDIT='u/Victor_Lazarus';
+
+
 // Catch Log tab: how often (in minutes) to auto-check the sheet for newly
 // added Pokémon while that tab is open. Set to 0 to disable auto-polling
 // entirely (manual "Check now" still works).
