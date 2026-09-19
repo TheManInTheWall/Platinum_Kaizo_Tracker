@@ -195,6 +195,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-team" onclick="setPage('team')">Team</div>
   <div class="navtab" id="tab-bosses" onclick="setPage('bosses')">Bosses</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
+  <div class="navtab" id="tab-feedback" onclick="setPage('feedback')">Feedback</div>
 </div>
 
 
@@ -482,6 +483,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="navtab" id="teamSubtab-breakdown" onclick="setTeamView('breakdown')" style="font-size:11px;padding:6px 16px">Breakdown</div>
     <div class="navtab" id="teamSubtab-species" onclick="setTeamView('species')" style="font-size:11px;padding:6px 16px">Species History</div>
     <div class="navtab" id="teamSubtab-catchlog" onclick="setTeamView('catchlog')" style="font-size:11px;padding:6px 16px">Catch Log</div>
+    <div class="navtab" id="teamSubtab-kills" onclick="setTeamView('kills')" style="font-size:11px;padding:6px 16px">Kills</div>
     <div class="navtab" id="teamSubtab-stats" onclick="setTeamView('stats')" style="font-size:11px;padding:6px 16px">Stats</div>
   </div>
   <div id="teamRawControls" style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -519,6 +521,34 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 <!-- ── Insights ── -->
 <div class="page" id="page-insights" style="flex-direction:column;overflow-y:auto">
   <div class="analytics-page" id="insightsContent" style="flex:none;overflow:visible">
+  </div>
+</div>
+
+<!-- ── Feedback ── -->
+<div class="page" id="page-feedback" style="flex-direction:column;padding:24px;overflow-y:auto">
+  <div style="max-width:480px">
+    <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px">Feedback & bug reports</div>
+    <div style="font-size:12px;color:#888;margin-bottom:20px">Found something broken, or have an idea for the tracker? Either of these works.</div>
+
+    <a href="https://github.com/TheManInTheWall/Platinum_Kaizo_Tracker/issues" target="_blank" style="text-decoration:none">
+      <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='#3a6ea5'" onmouseout="this.style.borderColor='#2a2a2a'">
+        <div style="font-size:24px">🐙</div>
+        <div>
+          <div style="font-size:13px;color:#8fc6ff;font-weight:600">GitHub Issues</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">github.com/TheManInTheWall/Platinum_Kaizo_Tracker/issues</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="https://discord.com/users/83552350525980672" target="_blank" style="text-decoration:none">
+      <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='#3a6ea5'" onmouseout="this.style.borderColor='#2a2a2a'">
+        <div style="font-size:24px">💬</div>
+        <div>
+          <div style="font-size:13px;color:#8fc6ff;font-weight:600">Discord</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">Message directly on Discord</div>
+        </div>
+      </div>
+    </a>
   </div>
 </div>
 
@@ -690,6 +720,33 @@ function showToast(msg, color='#7fd97f'){
   t.textContent=msg;
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),3000);
+}
+
+// Chat-bubble style popup for newly detected catches (Catch Log auto-poll).
+// Stacks upward if several arrive close together; stays put while hovered.
+function showCatchNotification(text){
+  let stack=document.getElementById('catchNotifyStack');
+  if(!stack){
+    stack=document.createElement('div');
+    stack.id='catchNotifyStack';
+    stack.style.cssText='position:fixed;bottom:16px;right:16px;z-index:1000;display:flex;flex-direction:column-reverse;gap:8px;max-width:320px';
+    document.body.appendChild(stack);
+  }
+  const bubble=document.createElement('div');
+  bubble.style.cssText='background:#16324a;border:1px solid #2e6ea6;border-radius:10px;border-bottom-right-radius:2px;'+
+    'padding:10px 14px;font-size:12px;color:#dbeeff;box-shadow:0 4px 16px rgba(0,0,0,.5);animation:catchIn .25s ease-out';
+  bubble.innerHTML=`<div style="font-weight:600;color:#8fc6ff;margin-bottom:3px;font-size:10px">📋 New catch logged</div>
+    <div>${text}</div>`;
+  stack.appendChild(bubble);
+
+  let removeTimer=setTimeout(()=>bubble.remove(), 9000);
+  bubble.addEventListener('mouseenter', ()=>clearTimeout(removeTimer));
+  bubble.addEventListener('mouseleave', ()=>{ removeTimer=setTimeout(()=>bubble.remove(), 3000); });
+  bubble.addEventListener('click', ()=>{
+    navigator.clipboard.writeText(text).then(()=>showToast('Copied!','#7fd97f'));
+  });
+  bubble.style.cursor='pointer';
+  bubble.title='Click to copy';
 }
 
 function copyPaceInfo(){
@@ -2556,6 +2613,16 @@ function selectLcTrainer(i){
   renderLcChart();
 }
 
+let lcLastSummary=null;
+function copyLcSummary(){
+  if(!lcLastSummary) return;
+  navigator.clipboard.writeText(lcLastSummary.text).then(()=>{
+    showToast('Copied!','#7fd97f');
+  }).catch(()=>{
+    showToast('Copy failed — clipboard blocked','#e05555');
+  });
+}
+
 function renderLcChart(){
   if(lcChartInst){ lcChartInst.destroy(); lcChartInst=null; }
   const wrap=document.getElementById('lcChartWrap');
@@ -2606,7 +2673,12 @@ function renderLcChart(){
     ${encounters.length} encounter${encounters.length===1?'':'s'},
     first: <b style="color:#ccc">${first.value}</b>,
     latest: <b style="color:#ccc">${last.value}</b>,
-    trend: <b style="color:${trendColor}">${trend}</b>`;
+    trend: <b style="color:${trendColor}">${trend}</b>
+    <button class="btn" onclick="copyLcSummary()" style="font-size:10px;margin-left:8px">Copy</button>`;
+
+  lcLastSummary={
+    text:`${t.n} [${t.s}] — ${encounters.length} encounter${encounters.length===1?'':'s'}, first: ${first.value}, latest: ${last.value}, trend: ${trend} — ${encounters.map(e=>e.value).join('-')}`
+  };
 
   const labels=encounters.map((e,idx)=>`#${idx+1}`);
   const pointColors=encounters.map(e=>e.lost?'#e05555':(e.value===0?'#59a14f':'#edc948'));
@@ -2739,7 +2811,7 @@ let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'stats'
 
 function setTeamView(view){
   teamView=view;
-  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','stats'].forEach(v=>{
+  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','kills','stats'].forEach(v=>{
     document.getElementById(`teamSubtab-${v}`)?.classList.toggle('active',v===view);
   });
 
@@ -2754,6 +2826,12 @@ function setTeamView(view){
     const link=document.getElementById('teamSheetLink');
     if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
     loadTeamSheet(false);
+    return;
+  }
+
+  if(view==='kills'){
+    if(statusEl){ statusEl.textContent=''; }
+    loadKillsData(false);
     return;
   }
 
@@ -2814,6 +2892,116 @@ function renderTeamComputedView(){
   else if(teamView==='species') renderSpeciesHistoryView();
   else if(teamView==='catchlog') renderCatchLogView();
   else if(teamView==='stats') renderTeamStats();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// KILLS — a separate spreadsheet (different doc) tracking frags credited
+// to YOUR Pokémon. Layout: species | encounter freq (ignored, we compute
+// our own) | total frags | avg frags | per-attempt frag columns.
+// ─────────────────────────────────────────────────────────────────
+let killsCache=null; // {headers, rows}
+let killsLoading=false;
+let killsSortKey='totalFrags';
+let killsSortDir='desc';
+
+async function loadKillsData(forceRefresh){
+  if(killsCache && !forceRefresh){ renderKillsView(); return; }
+  if(killsLoading) return;
+  killsLoading=true;
+  const content=document.getElementById('teamContent');
+  if(content) content.innerHTML='<div style="color:#888;font-size:12px;padding:20px">Loading kills data…</div>';
+  try{
+    const url=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${KILLS_SHEET_GID}`;
+    const res=await fetch(url,{cache:'no-cache'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text=await res.text();
+    const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
+    if(!rows.length) throw new Error('Empty response');
+    const headers=rows[0].map(h=>(h||'').trim());
+    const dataRows=rows.slice(1).filter(r=>(r[0]||'').trim()!=='');
+    killsCache={headers, rows:dataRows};
+  }catch(e){
+    console.error('Kills data load failed:',e);
+    if(content){
+      content.innerHTML=`<div style="color:#e05555;font-size:12px;padding:20px">Could not load kills data (${e.message}). `+
+        `<a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="color:#4e79a7">Open it directly ↗</a></div>`;
+    }
+    killsCache=null;
+  }
+  killsLoading=false;
+  renderKillsView();
+}
+
+function setKillsSortKey(key){ killsSortKey=key; renderKillsView(); }
+function toggleKillsSortDir(){
+  killsSortDir = killsSortDir==='desc' ? 'asc' : 'desc';
+  document.getElementById('killsSortDirBtn').textContent = killsSortDir==='desc' ? '↓ High → Low' : '↑ Low → High';
+  renderKillsView();
+}
+
+function renderKillsView(){
+  const content=document.getElementById('teamContent');
+  if(!content||!killsCache) return;
+
+  const {headers, rows}=killsCache;
+  // Expected layout: [species, encounterFreq, totalFrags, avgFrags, ...perAttempt]
+  const attemptCols=headers.slice(4);
+
+  const parsed=rows.map(r=>({
+    species:normalizeSpecies(r[0]||''),
+    totalFrags:parseFloat(r[2])||0,
+    avgFrags:parseFloat(r[3])||0,
+    perAttempt:attemptCols.map((_,i)=>r[4+i]||''),
+  }));
+
+  const sortOptions=[
+    {key:'totalFrags',label:'Total Frags'},
+    {key:'avgFrags',label:'Avg Frags'},
+    {key:'species',label:'Pokémon (A-Z)'},
+  ];
+
+  const sorted=[...parsed].sort((a,b)=>{
+    let diff;
+    if(killsSortKey==='species') diff=a.species.localeCompare(b.species);
+    else diff=(a[killsSortKey]||0)-(b[killsSortKey]||0);
+    return killsSortDir==='desc' ? -diff : diff;
+  });
+
+  const attemptHeaders=attemptCols.map(h=>`<th style="text-align:center;white-space:nowrap;font-size:9px">${h}</th>`).join('');
+  const bodyRows=sorted.map((x,i)=>{
+    const attemptCells=x.perAttempt.map(v=>{
+      const val=(v||'').trim();
+      return `<td style="text-align:center;color:${val?'#ccc':'#333'};font-size:10px">${val||'—'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="color:#444;text-align:center">${i+1}</td>
+      <td style="white-space:nowrap">${displaySpecies(x.species)}</td>
+      <td style="color:#e05555;font-weight:600;text-align:center">${x.totalFrags}</td>
+      <td style="color:#edc948;text-align:center">${x.avgFrags}</td>
+      ${attemptCells}
+    </tr>`;
+  }).join('');
+
+  content.innerHTML=`
+    <div style="font-size:11px;color:#666;margin-bottom:10px">
+      Kill data collected by <span style="color:#8fc6ff;font-weight:600">${KILLS_CREDIT}</span> — thank you!
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn b" onclick="loadKillsData(true)" style="font-size:11px">Refresh from sheet</button>
+      <select onchange="setKillsSortKey(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px">
+        ${sortOptions.map(o=>`<option value="${o.key}" ${killsSortKey===o.key?'selected':''}>${o.label}</option>`).join('')}
+      </select>
+      <button class="btn" onclick="toggleKillsSortDir()" id="killsSortDirBtn" style="font-size:10px">${killsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button>
+      <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table" style="font-size:11px">
+        <thead><tr>
+          <th></th><th>Pokémon</th><th style="text-align:center">Total Frags</th><th style="text-align:center">Avg Frags</th>${attemptHeaders}
+        </tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
 }
 
 async function loadTeamSheet(forceRefresh){
@@ -3244,6 +3432,24 @@ function normalizeSpecies(name){
   return trimmed.charAt(0).toUpperCase()+trimmed.slice(1).toLowerCase();
 }
 
+// Display-only nickname lookup — never used for matching/tallying, only for
+// what text actually gets shown. Pass an already-normalizeSpecies()'d name.
+let _speciesNicknameLookup=null;
+function getSpeciesNicknameLookup(){
+  if(_speciesNicknameLookup) return _speciesNicknameLookup;
+  _speciesNicknameLookup=new Map();
+  if(typeof SPECIES_NICKNAMES!=='undefined'){
+    Object.entries(SPECIES_NICKNAMES).forEach(([canonical,nick])=>{
+      _speciesNicknameLookup.set(canonical.trim().toLowerCase(), nick);
+    });
+  }
+  return _speciesNicknameLookup;
+}
+function displaySpecies(canonicalName){
+  const key=(canonicalName||'').trim().toLowerCase();
+  return getSpeciesNicknameLookup().get(key) || canonicalName;
+}
+
 function findHeaderIdx(headers, name){
   return headers.findIndex(h=>(h||'').trim().toUpperCase()===name.toUpperCase());
 }
@@ -3266,11 +3472,11 @@ function pctBar(pct, color){
   </div>`;
 }
 
-function renderStatList(title, entries, color, limit){
+function renderStatList(title, entries, color, limit, isSpecies=true){
   const rows=entries.slice(0,limit).map(([name,count],i)=>`
     <tr>
       <td style="color:#444;width:20px">${i+1}</td>
-      <td style="white-space:nowrap">${name}</td>
+      <td style="white-space:nowrap">${isSpecies?displaySpecies(name):name}</td>
       <td style="color:${color};font-weight:600;text-align:right;width:50px">${count}</td>
     </tr>`).join('');
   return `
@@ -3340,7 +3546,7 @@ function renderTeamStats(){
   const survivedRows=survived.slice(0,15).map(([name,count],i)=>`
     <tr>
       <td style="color:#444;width:20px">${i+1}</td>
-      <td style="white-space:nowrap">${name}</td>
+      <td style="white-space:nowrap">${displaySpecies(name)}</td>
       <td style="color:#7fd97f;font-weight:600;text-align:right;white-space:nowrap">${count}/${totalAttemptsFull}</td>
     </tr>`).join('');
 
@@ -3386,7 +3592,7 @@ function renderTeamStats(){
     const starterRowsHtml=starterStats.map((x,i)=>`
       <tr>
         <td style="color:#444;text-align:center">${i+1}</td>
-        <td style="white-space:nowrap">${x.name}</td>
+        <td style="white-space:nowrap">${displaySpecies(x.name)}</td>
         <td style="color:#59a14f;font-weight:600;text-align:center">${x.picks}</td>
         <td style="color:#666;text-align:center">${x.pickPct}%</td>
         <td style="color:#8fc6ff;font-weight:600;text-align:center;white-space:nowrap">${x.avgReach!==null?fmtReach(x.avgReach):'—'}</td>
@@ -3432,8 +3638,8 @@ function renderTeamStats(){
     </div>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-      ${renderStatList('Top 6 Common Natures', commonNatures, '#edc948', 6)}
-      ${renderStatList('Bottom 6 Rare Natures', rareNatures, '#888', 6)}
+      ${renderStatList('Top 6 Common Natures', commonNatures, '#edc948', 6, false)}
+      ${renderStatList('Bottom 6 Rare Natures', rareNatures, '#888', 6, false)}
     </div>
 
     <div style="margin-bottom:20px">${starterHtml}</div>
@@ -3585,10 +3791,11 @@ async function confirmNewMon(){
   const newObtained=obtainedCount+1;
   const newMethodCount=methodCount+1;
   const pctAttempts=totalAttemptsFull>0 ? Math.round(newObtained/totalAttemptsFull*100) : 0;
+  const shownName=displaySpecies(species);
 
-  let text=`We have obtained ${species} for the ${ordinal(newObtained)} time (${pctAttempts}%). We encountered ${newMethodCount} out of ${newObtained} via ${method} like now.`;
+  let text=`We have obtained ${shownName} for the ${ordinal(newObtained)} time (${pctAttempts}%). We encountered ${newMethodCount} out of ${newObtained} via ${method} like now.`;
   if(lastAttemptNum!==null){
-    text+=` Last time we got ${species} was in ${ds.formatGroupLabelFromNumber(lastAttemptNum)}.`;
+    text+=` Last time we got ${shownName} was in ${ds.formatGroupLabelFromNumber(lastAttemptNum)}.`;
   }
 
   if(resultEl) resultEl.innerHTML=text;
@@ -3664,7 +3871,7 @@ function renderBreakdownTable(){
     }).join('');
     return `<tr>
       <td style="color:#444;text-align:center">${i+1}</td>
-      <td style="white-space:nowrap">${r.name}</td>
+      <td style="white-space:nowrap">${displaySpecies(r.name)}</td>
       <td style="color:#59a14f;font-weight:600;text-align:center;white-space:nowrap">${r.obtainedCount}</td>
       <td style="text-align:center">${pctBar(r.obtainedPct,'#59a14f')}</td>
       <td style="color:#e05555;font-weight:600;text-align:center;white-space:nowrap">${r.diedCount}</td>
@@ -3799,6 +4006,7 @@ function renderSpeciesHistoryTable(){
   }).join('');
 
   wrap.innerHTML=`
+    <div style="font-size:13px;color:#8fc6ff;font-weight:600;margin-bottom:4px">${displaySpecies(speciesHistorySelected)}</div>
     <div style="font-size:11px;color:#888;margin-bottom:8px">
       ${instances.length} catches — avg IV sum <b style="color:#edc948">${avgIV}</b>,
       best <b style="color:#7fd97f">${best.ivSum}</b> (${best.attemptLabel}),
@@ -3821,7 +4029,7 @@ function renderSpeciesHistoryTable(){
 let teamAutoLogEntries=JSON.parse(localStorage.getItem('team_catch_log')||'[]');
 let teamLastSeenCatchCount=parseInt(localStorage.getItem('team_last_seen_catch_count')||'0',10);
 let teamAutoPollTimer=null;
-let teamAutoPollEnabled=localStorage.getItem('team_autopoll_enabled')==='true';
+let teamAutoPollEnabled=localStorage.getItem('team_autopoll_enabled')!=='false';
 let teamCatchLogBusy=false;
 
 function saveCatchLogState(){
@@ -3879,7 +4087,12 @@ async function pollForNewCatches(manual){
     const totalAttemptsFull=new Set(fullRows.map(r=>ds.groupKeyNumber(r[0]))).size;
     const running=computeRunningCatchStats(fullRows, nameIdx);
 
-    if(running.length>teamLastSeenCatchCount){
+    // On the very first-ever poll there's no baseline yet — treat the
+    // current count as "already seen" rather than dumping the whole
+    // history in as if it all just happened.
+    const isBaselineEstablish = teamLastSeenCatchCount===0 && teamAutoLogEntries.length===0;
+
+    if(running.length>teamLastSeenCatchCount && !isBaselineEstablish){
       const newOnes=running.slice(teamLastSeenCatchCount);
       newOnes.forEach(entry=>{
         // Find the previous occurrence of this species (if any) for "last time"
@@ -3891,12 +4104,17 @@ async function pollForNewCatches(manual){
           }
         }
         const pctAttempts=totalAttemptsFull>0?Math.round(entry.obtainedCount/totalAttemptsFull*100):0;
-        let text=`We have obtained ${entry.species} for the ${ordinal(entry.obtainedCount)} time (${pctAttempts}%). We encountered ${entry.methodCount} out of ${entry.obtainedCount} via ${entry.method} like now.`;
+        const shownName=displaySpecies(entry.species);
+        let text=`We have obtained ${shownName} for the ${ordinal(entry.obtainedCount)} time (${pctAttempts}%). We encountered ${entry.methodCount} out of ${entry.obtainedCount} via ${entry.method} like now.`;
         if(lastAttemptNum!==null){
-          text+=` Last time we got ${entry.species} was in ${ds.formatGroupLabelFromNumber(lastAttemptNum)}.`;
+          text+=` Last time we got ${shownName} was in ${ds.formatGroupLabelFromNumber(lastAttemptNum)}.`;
         }
         teamAutoLogEntries.unshift({time:Date.now(), text, attempt:ds.formatGroupLabel(entry.row[0])});
+        showCatchNotification(text);
       });
+      teamLastSeenCatchCount=running.length;
+      saveCatchLogState();
+    } else if(isBaselineEstablish){
       teamLastSeenCatchCount=running.length;
       saveCatchLogState();
     }
