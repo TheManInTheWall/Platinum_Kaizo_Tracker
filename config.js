@@ -28,9 +28,9 @@ const TEAM_AUTOLOG_INTERVAL_MIN=5;
 // one entry. Left-hand name gets folded INTO the right-hand name.
 // Example: { "Azurill": "Azurill/Azumarill", "Azumarill": "Azurill/Azumarill" }
 const SPECIES_ALIASES={
-   "Azurill": "Azurill/Azumarill/Marill",
-   "Azumarill": "Azurill/Azumarill/Marill",
-  "Marill": "Azurill/Azumarill/Marill",
+   "Azurill": "Azumarill",
+   "Azumarill": "Azumarill",
+  "Marill": "Azumarill",
 
   "Prinplup": "Piplup",
   "Piplup": "Piplup",
