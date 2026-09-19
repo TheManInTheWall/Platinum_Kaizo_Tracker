@@ -42,5 +42,16 @@ const SPECIES_ALIASES={
 
   "Monferno": "Chimchar",
   "Chimchar": "Chimchar",
-  "Infernape": "Chimchar"
+  "Infernape": "Chimchar",
+
+  "Spinarak": "Ariados",
+  "Ariados": "Ariados"
+};
+// Pure DISPLAY layer on top of the above — the real/combined species name is
+// still used for matching, tallying, and searching everywhere; only the text
+// shown to you gets swapped for the nickname. Key by the name SPECIES_ALIASES
+// resolves TO (the canonical/combined form), not the raw sheet spelling.
+// Matching is case-insensitive, same as SPECIES_ALIASES.
+const SPECIES_NICKNAMES={
+  "Ariados": "Webarak Obama Der Spinnenpräsident",
 };
