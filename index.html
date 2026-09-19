@@ -483,7 +483,6 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="navtab" id="teamSubtab-breakdown" onclick="setTeamView('breakdown')" style="font-size:11px;padding:6px 16px">Breakdown</div>
     <div class="navtab" id="teamSubtab-species" onclick="setTeamView('species')" style="font-size:11px;padding:6px 16px">Species History</div>
     <div class="navtab" id="teamSubtab-catchlog" onclick="setTeamView('catchlog')" style="font-size:11px;padding:6px 16px">Catch Log</div>
-    <div class="navtab" id="teamSubtab-kills" onclick="setTeamView('kills')" style="font-size:11px;padding:6px 16px">Kills</div>
     <div class="navtab" id="teamSubtab-stats" onclick="setTeamView('stats')" style="font-size:11px;padding:6px 16px">Stats</div>
   </div>
   <div id="teamRawControls" style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -521,34 +520,6 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 <!-- ── Insights ── -->
 <div class="page" id="page-insights" style="flex-direction:column;overflow-y:auto">
   <div class="analytics-page" id="insightsContent" style="flex:none;overflow:visible">
-  </div>
-</div>
-
-<!-- ── Feedback ── -->
-<div class="page" id="page-feedback" style="flex-direction:column;padding:24px;overflow-y:auto">
-  <div style="max-width:480px">
-    <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px">Feedback & bug reports</div>
-    <div style="font-size:12px;color:#888;margin-bottom:20px">Found something broken, or have an idea for the tracker? Either of these works.</div>
-
-    <a href="https://github.com/TheManInTheWall/Platinum_Kaizo_Tracker/issues" target="_blank" style="text-decoration:none">
-      <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='#3a6ea5'" onmouseout="this.style.borderColor='#2a2a2a'">
-        <div style="font-size:24px">🐙</div>
-        <div>
-          <div style="font-size:13px;color:#8fc6ff;font-weight:600">GitHub Issues</div>
-          <div style="font-size:11px;color:#666;margin-top:2px">github.com/TheManInTheWall/Platinum_Kaizo_Tracker/issues</div>
-        </div>
-      </div>
-    </a>
-
-    <a href="https://discord.com/users/83552350525980672" target="_blank" style="text-decoration:none">
-      <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:16px;display:flex;align-items:center;gap:14px;transition:border-color .15s" onmouseover="this.style.borderColor='#3a6ea5'" onmouseout="this.style.borderColor='#2a2a2a'">
-        <div style="font-size:24px">💬</div>
-        <div>
-          <div style="font-size:13px;color:#8fc6ff;font-weight:600">Discord</div>
-          <div style="font-size:11px;color:#666;margin-top:2px">Message directly on Discord</div>
-        </div>
-      </div>
-    </a>
   </div>
 </div>
 
@@ -2811,7 +2782,7 @@ let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'stats'
 
 function setTeamView(view){
   teamView=view;
-  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','kills','stats'].forEach(v=>{
+  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','stats'].forEach(v=>{
     document.getElementById(`teamSubtab-${v}`)?.classList.toggle('active',v===view);
   });
 
@@ -2826,12 +2797,6 @@ function setTeamView(view){
     const link=document.getElementById('teamSheetLink');
     if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
     loadTeamSheet(false);
-    return;
-  }
-
-  if(view==='kills'){
-    if(statusEl){ statusEl.textContent=''; }
-    loadKillsData(false);
     return;
   }
 
@@ -2892,116 +2857,6 @@ function renderTeamComputedView(){
   else if(teamView==='species') renderSpeciesHistoryView();
   else if(teamView==='catchlog') renderCatchLogView();
   else if(teamView==='stats') renderTeamStats();
-}
-
-// ─────────────────────────────────────────────────────────────────
-// KILLS — a separate spreadsheet (different doc) tracking frags credited
-// to YOUR Pokémon. Layout: species | encounter freq (ignored, we compute
-// our own) | total frags | avg frags | per-attempt frag columns.
-// ─────────────────────────────────────────────────────────────────
-let killsCache=null; // {headers, rows}
-let killsLoading=false;
-let killsSortKey='totalFrags';
-let killsSortDir='desc';
-
-async function loadKillsData(forceRefresh){
-  if(killsCache && !forceRefresh){ renderKillsView(); return; }
-  if(killsLoading) return;
-  killsLoading=true;
-  const content=document.getElementById('teamContent');
-  if(content) content.innerHTML='<div style="color:#888;font-size:12px;padding:20px">Loading kills data…</div>';
-  try{
-    const url=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${KILLS_SHEET_GID}`;
-    const res=await fetch(url,{cache:'no-cache'});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text=await res.text();
-    const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
-    if(!rows.length) throw new Error('Empty response');
-    const headers=rows[0].map(h=>(h||'').trim());
-    const dataRows=rows.slice(1).filter(r=>(r[0]||'').trim()!=='');
-    killsCache={headers, rows:dataRows};
-  }catch(e){
-    console.error('Kills data load failed:',e);
-    if(content){
-      content.innerHTML=`<div style="color:#e05555;font-size:12px;padding:20px">Could not load kills data (${e.message}). `+
-        `<a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="color:#4e79a7">Open it directly ↗</a></div>`;
-    }
-    killsCache=null;
-  }
-  killsLoading=false;
-  renderKillsView();
-}
-
-function setKillsSortKey(key){ killsSortKey=key; renderKillsView(); }
-function toggleKillsSortDir(){
-  killsSortDir = killsSortDir==='desc' ? 'asc' : 'desc';
-  document.getElementById('killsSortDirBtn').textContent = killsSortDir==='desc' ? '↓ High → Low' : '↑ Low → High';
-  renderKillsView();
-}
-
-function renderKillsView(){
-  const content=document.getElementById('teamContent');
-  if(!content||!killsCache) return;
-
-  const {headers, rows}=killsCache;
-  // Expected layout: [species, encounterFreq, totalFrags, avgFrags, ...perAttempt]
-  const attemptCols=headers.slice(4);
-
-  const parsed=rows.map(r=>({
-    species:normalizeSpecies(r[0]||''),
-    totalFrags:parseFloat(r[2])||0,
-    avgFrags:parseFloat(r[3])||0,
-    perAttempt:attemptCols.map((_,i)=>r[4+i]||''),
-  }));
-
-  const sortOptions=[
-    {key:'totalFrags',label:'Total Frags'},
-    {key:'avgFrags',label:'Avg Frags'},
-    {key:'species',label:'Pokémon (A-Z)'},
-  ];
-
-  const sorted=[...parsed].sort((a,b)=>{
-    let diff;
-    if(killsSortKey==='species') diff=a.species.localeCompare(b.species);
-    else diff=(a[killsSortKey]||0)-(b[killsSortKey]||0);
-    return killsSortDir==='desc' ? -diff : diff;
-  });
-
-  const attemptHeaders=attemptCols.map(h=>`<th style="text-align:center;white-space:nowrap;font-size:9px">${h}</th>`).join('');
-  const bodyRows=sorted.map((x,i)=>{
-    const attemptCells=x.perAttempt.map(v=>{
-      const val=(v||'').trim();
-      return `<td style="text-align:center;color:${val?'#ccc':'#333'};font-size:10px">${val||'—'}</td>`;
-    }).join('');
-    return `<tr>
-      <td style="color:#444;text-align:center">${i+1}</td>
-      <td style="white-space:nowrap">${displaySpecies(x.species)}</td>
-      <td style="color:#e05555;font-weight:600;text-align:center">${x.totalFrags}</td>
-      <td style="color:#edc948;text-align:center">${x.avgFrags}</td>
-      ${attemptCells}
-    </tr>`;
-  }).join('');
-
-  content.innerHTML=`
-    <div style="font-size:11px;color:#666;margin-bottom:10px">
-      Kill data collected by <span style="color:#8fc6ff;font-weight:600">${KILLS_CREDIT}</span> — thank you!
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn b" onclick="loadKillsData(true)" style="font-size:11px">Refresh from sheet</button>
-      <select onchange="setKillsSortKey(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px">
-        ${sortOptions.map(o=>`<option value="${o.key}" ${killsSortKey===o.key?'selected':''}>${o.label}</option>`).join('')}
-      </select>
-      <button class="btn" onclick="toggleKillsSortDir()" id="killsSortDirBtn" style="font-size:10px">${killsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button>
-      <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
-    </div>
-    <div style="overflow-x:auto">
-      <table class="data-table" style="font-size:11px">
-        <thead><tr>
-          <th></th><th>Pokémon</th><th style="text-align:center">Total Frags</th><th style="text-align:center">Avg Frags</th>${attemptHeaders}
-        </tr></thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
 }
 
 async function loadTeamSheet(forceRefresh){
