@@ -86,25 +86,32 @@ const TRAINERS = [
 {n:"Hiker Alexander",s:"Fantina"},
 {n:"Hiker Jonathan",s:"Fantina"},
 {n:"Dragon Tamer Drax",s:"Fantina"},
-{n:"Artist William",s:"Fantina"},
-{n:"Ninja Boy Donny (FOG)",s:"Fantina"},
+{ n: "Artist William", s: "Fantina" },
+// Gym Room 1
+{ n: "Ninja Boy Donny (FOG)", s: "Fantina" },
 {n:"Policeman Morton (FOG)",s:"Fantina"},
-{n:"Psychic Tony (FOG, Also Room 5)",s:"Fantina"},
+{ n: "Psychic Tony (FOG, Also Room 5)", s: "Fantina" },
+// Gym Room 2
 {n:"Idol Catherine",s:"Fantina"},
 {n:"Clown Chance (RIGHT SIDE)",s:"Fantina"},
 {n:"Clown Luigi",s:"Fantina"},
 {n:"Artist Allen",s:"Fantina"},
-{n:"Idol Amber",s:"Fantina"},
-{n:"Leader Fantina (Room 5 Separate Fight)",s:"Fantina"},
+{ n: "Idol Amber", s: "Fantina" },
+// Gym Room 3
+{ n: "Leader Fantina (Room 5 Separate Fight)", s: "Fantina" },
+// Gym Room 4
 {n:"Ninja Boy Drew (FOG, Also Room 5)",s:"Fantina"},
 {n:"Clown Justin (FOG, Also Room 5)",s:"Fantina"},
 {n:"Psychic Helen (FOG)",s:"Fantina"},
 {n:"Policeman Kevin (FOG, Also Room 5)",s:"Fantina"},
 {n:"Psychic Theodore (FOG)",s:"Fantina"},
-{n:"Clown Luigi (Also Room 2)",s:"Fantina"},
-{n:"Idol Catherine (FOG)",s:"Fantina"},
+// Gym Room 5
+{ n: "Clown Luigi (Also Room 2)", s: "Fantina" },
+{ n: "Idol Catherine (FOG)", s: "Fantina" },
+// Gym Room 6
 {n:"Ninja Boy Donny (FOG) #2",s:"Fantina"},
-{n:"Psychic Cheyenne (FOG)",s:"Fantina"},
+{ n: "Psychic Cheyenne (FOG)", s: "Fantina" },
+// Gym Room 7
 {n:"Leader Fantina",s:"Fantina"},
 // ── Maylene ────────────────────────────────────────────
 {n:"Barry #3",s:"Maylene"},
