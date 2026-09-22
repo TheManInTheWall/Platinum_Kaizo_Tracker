@@ -113,7 +113,7 @@ const TRAINERS = [
 { n: "Clown Luigi", s: "Fantina" },
 { n: "Idol Catherine (FOG)", s: "Fantina" },
 // Gym Room 6
-{ n: "Ninja boy Drew", s: "Fantina" },
+{ n: "Ninja Boy Drew", s: "Fantina" },
   { n: "Policeman Kevin", s: "Fantina" },
   { n: "Clown Justin", s: "Fantina" },
   { n: "Psychic Tony", s: "Fantina" },
