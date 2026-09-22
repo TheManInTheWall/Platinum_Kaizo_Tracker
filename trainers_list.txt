@@ -99,7 +99,7 @@ Total Trainers: 415
 [ 95] Clown Chance (Fantina)
 [ 96] Artist Allen (Fantina)
 [ 97] Policeman Morton (Fantina)
-[ 98] Clown Luigi (Also Room 2) (Fantina)
+[ 98] Clown Luigi (Fantina)
 [ 99] Idol Catherine (FOG) (Fantina)
 [100] Ninja boy Drew (Fantina)
 [101] Policeman Kevin (Fantina)
