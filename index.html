@@ -193,6 +193,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div class="navtab" id="tab-breakdown" onclick="setPage('breakdown')">Trainer breakdown</div>
   <div class="navtab" id="tab-learning" onclick="setPage('learning')">Learning curve</div>
   <div class="navtab" id="tab-team" onclick="setPage('team')">Team</div>
+  <div class="navtab" id="tab-frags" onclick="setPage('frags')">Frags</div>
   <div class="navtab" id="tab-bosses" onclick="setPage('bosses')">Bosses</div>
   <div class="navtab" id="tab-insights" onclick="setPage('insights')">Insights</div>
   <div class="navtab" id="tab-feedback" onclick="setPage('feedback')">Feedback</div>
@@ -483,7 +484,6 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="navtab" id="teamSubtab-breakdown" onclick="setTeamView('breakdown')" style="font-size:11px;padding:6px 16px">Breakdown</div>
     <div class="navtab" id="teamSubtab-species" onclick="setTeamView('species')" style="font-size:11px;padding:6px 16px">Species History</div>
     <div class="navtab" id="teamSubtab-catchlog" onclick="setTeamView('catchlog')" style="font-size:11px;padding:6px 16px">Catch Log</div>
-    <div class="navtab" id="teamSubtab-kills" onclick="setTeamView('kills')" style="font-size:11px;padding:6px 16px">Kills</div>
     <div class="navtab" id="teamSubtab-stats" onclick="setTeamView('stats')" style="font-size:11px;padding:6px 16px">Stats</div>
   </div>
   <div id="teamRawControls" style="padding:10px 14px;border-bottom:1px solid #1e1e1e;display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -494,6 +494,17 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div id="teamStatus" style="padding:8px 14px;font-size:11px;color:#555;flex-shrink:0"></div>
   <div style="flex:1;overflow:auto;padding:0 14px 14px">
     <div id="teamContent"></div>
+  </div>
+</div>
+
+<!-- ── Frags (kill data — separate spreadsheet) ── -->
+<div class="page" id="page-frags" style="flex-direction:column;overflow:hidden">
+  <div style="display:flex;gap:0;border-bottom:1px solid #2a2a2a;flex-shrink:0">
+    <div class="navtab active" id="fragsSubtab-solo" onclick="setFragsDataset('solo')" style="font-size:11px;padding:6px 16px">Solo Battles</div>
+    <div class="navtab" id="fragsSubtab-tag" onclick="setFragsDataset('tag')" style="font-size:11px;padding:6px 16px">Tag Battles</div>
+  </div>
+  <div style="flex:1;overflow:auto;padding:14px">
+    <div id="fragsContent"></div>
   </div>
 </div>
 
@@ -1568,6 +1579,7 @@ function setPage(p){
   else if(p==='breakdown'){ renderBdPicker(); renderBdTable(); }
   else if(p==='learning'){ renderLcPicker(); renderLcChart(); }
   else if(p==='team') setTeamView(teamView);
+  else if(p==='frags') setFragsDataset(fragsCurrentDataset);
   else if(p==='bosses') renderBosses();
   else if(p==='insights') renderInsights();
 }
@@ -2811,7 +2823,7 @@ let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'stats'
 
 function setTeamView(view){
   teamView=view;
-  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','kills','stats'].forEach(v=>{
+  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','stats'].forEach(v=>{
     document.getElementById(`teamSubtab-${v}`)?.classList.toggle('active',v===view);
   });
 
@@ -2826,12 +2838,6 @@ function setTeamView(view){
     const link=document.getElementById('teamSheetLink');
     if(link) link.href=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/edit?gid=${ds.gid}`;
     loadTeamSheet(false);
-    return;
-  }
-
-  if(view==='kills'){
-    if(statusEl){ statusEl.textContent=''; }
-    loadKillsData(false);
     return;
   }
 
