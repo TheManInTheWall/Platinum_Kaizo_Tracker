@@ -558,4 +558,5 @@ const SPECIES_ALIASES = {
 // Matching is case-insensitive, same as SPECIES_ALIASES.
 const SPECIES_NICKNAMES={
   "Ariados": "Webarak Obama Der Spinnenpräsident",
+  "Machamp": "Karate Andi, Der Boss vom Hinterhof"
 };
