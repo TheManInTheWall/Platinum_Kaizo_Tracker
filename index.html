@@ -2873,10 +2873,7 @@ function isMeaningfulDataRow(r){
 async function loadTeamDatasetSilently(ds){
   if(ds.cache) return;
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
-    const res=await fetch(url,{cache:'no-cache'});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text=await res.text();
+    const text=await fetchSheetCSV(TEAM_SHEET_ID, ds.gid);
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
     ds.headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
@@ -2904,38 +2901,81 @@ function renderTeamComputedView(){
 // KILLS — a separate spreadsheet (different doc) tracking frags credited
 // to YOUR Pokémon. Layout: species | encounter freq (ignored, we compute
 // our own) | total frags | avg frags | per-attempt frag columns.
+// Two sheets, same layout: solo battles and tag battles.
 // ─────────────────────────────────────────────────────────────────
-let killsCache=null; // {headers, rows}
+const KILLS_DATASETS={
+  solo:{ gid:KILLS_SHEET_GID, label:'Solo Battles', cache:null },
+  tag:{ gid:KILLS_SHEET_GID_TAG, label:'Tag Battles', cache:null },
+};
+let fragsCurrentDataset='solo';
 let killsLoading=false;
 let killsSortKey='totalFrags';
 let killsSortDir='desc';
 
-async function loadKillsData(forceRefresh){
-  if(killsCache && !forceRefresh){ renderKillsView(); return; }
-  if(killsLoading) return;
-  killsLoading=true;
-  const content=document.getElementById('teamContent');
-  if(content) content.innerHTML='<div style="color:#888;font-size:12px;padding:20px">Loading kills data…</div>';
+// Shared fetch helper: aborts after a timeout instead of hanging forever,
+// and detects when Google silently hands back an HTML error page (usually
+// means the sheet isn't shared as "anyone with the link can view") instead
+// of a clean HTTP error code.
+async function fetchSheetCSV(sheetId, gid, timeoutMs=12000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(), timeoutMs);
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${KILLS_SHEET_GID}`;
-    const res=await fetch(url,{cache:'no-cache'});
+    const url=`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+    const res=await fetch(url,{cache:'no-cache', signal:controller.signal});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const text=await res.text();
+    if(text.trim().toLowerCase().startsWith('<')){
+      throw new Error('Sheet returned a webpage instead of data — it may not be shared as "anyone with the link can view"');
+    }
+    return text;
+  }catch(e){
+    if(e.name==='AbortError') throw new Error(`Timed out after ${Math.round(timeoutMs/1000)}s`);
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+function setFragsDataset(key){
+  if(!KILLS_DATASETS[key]) return;
+  fragsCurrentDataset=key;
+  document.getElementById('fragsSubtab-solo')?.classList.toggle('active',key==='solo');
+  document.getElementById('fragsSubtab-tag')?.classList.toggle('active',key==='tag');
+  loadKillsData(false);
+}
+
+async function loadKillsData(forceRefresh){
+  const ds=KILLS_DATASETS[fragsCurrentDataset];
+  if(ds.cache && !forceRefresh){ renderKillsView(); return; }
+  if(killsLoading) return;
+  killsLoading=true;
+  const content=document.getElementById('fragsContent');
+  if(content){
+    content.innerHTML=`<div style="display:flex;align-items:center;gap:10px;padding:20px;color:#888;font-size:12px">
+      <div class="spinner"></div> Loading ${ds.label.toLowerCase()} from Google Sheets…
+    </div>`;
+  }
+  try{
+    const text=await fetchSheetCSV(KILLS_SHEET_ID, ds.gid);
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
     const headers=rows[0].map(h=>(h||'').trim());
     const dataRows=rows.slice(1).filter(r=>(r[0]||'').trim()!=='');
-    killsCache={headers, rows:dataRows};
+    ds.cache={headers, rows:dataRows};
   }catch(e){
-    console.error('Kills data load failed:',e);
+    console.error(`${ds.label} kills data load failed:`,e);
     if(content){
-      content.innerHTML=`<div style="color:#e05555;font-size:12px;padding:20px">Could not load kills data (${e.message}). `+
-        `<a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="color:#4e79a7">Open it directly ↗</a></div>`;
+      content.innerHTML=`<div style="color:#e05555;font-size:12px;padding:20px">
+        Could not load ${ds.label.toLowerCase()} data: ${e.message}.<br><br>
+        <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${ds.gid}" target="_blank" style="color:#4e79a7">Open the sheet directly ↗</a>
+        to check it's shared publicly, then try again.<br><br>
+        <button class="btn b" onclick="loadKillsData(true)" style="font-size:11px">Retry</button>
+      </div>`;
     }
-    killsCache=null;
+    ds.cache=null;
   }
   killsLoading=false;
-  renderKillsView();
+  if(ds.cache) renderKillsView();
 }
 
 function setKillsSortKey(key){ killsSortKey=key; renderKillsView(); }
@@ -2945,11 +2985,33 @@ function toggleKillsSortDir(){
   renderKillsView();
 }
 
-function renderKillsView(){
-  const content=document.getElementById('teamContent');
-  if(!content||!killsCache) return;
+// Combined totals across BOTH solo and tag sheets, keyed by normalized
+// species — used to inject Kills/K-D/Avg Kills into the Breakdown table.
+function getCombinedKillsMap(){
+  const map=new Map(); // species -> {total, avg-sum, avg-count}
+  Object.values(KILLS_DATASETS).forEach(ds=>{
+    if(!ds.cache) return;
+    ds.cache.rows.forEach(r=>{
+      const species=normalizeSpecies(r[0]||'');
+      if(!species) return;
+      const total=parseFloat(r[2])||0;
+      const avg=parseFloat(r[3])||0;
+      if(!map.has(species)) map.set(species,{total:0, avgSum:0, avgCount:0});
+      const e=map.get(species);
+      e.total+=total;
+      e.avgSum+=avg;
+      e.avgCount++;
+    });
+  });
+  return map;
+}
 
-  const {headers, rows}=killsCache;
+function renderKillsView(){
+  const content=document.getElementById('fragsContent');
+  const ds=KILLS_DATASETS[fragsCurrentDataset];
+  if(!content||!ds.cache) return;
+
+  const {headers, rows}=ds.cache;
   // Expected layout: [species, encounterFreq, totalFrags, avgFrags, ...perAttempt]
   const attemptCols=headers.slice(4);
 
@@ -2998,7 +3060,7 @@ function renderKillsView(){
         ${sortOptions.map(o=>`<option value="${o.key}" ${killsSortKey===o.key?'selected':''}>${o.label}</option>`).join('')}
       </select>
       <button class="btn" onclick="toggleKillsSortDir()" id="killsSortDirBtn" style="font-size:10px">${killsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button>
-      <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
+      <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${ds.gid}" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
     </div>
     <div style="overflow-x:auto">
       <table class="data-table" style="font-size:11px">
@@ -3026,10 +3088,7 @@ async function loadTeamSheet(forceRefresh){
   if(btn) btn.disabled=true;
   if(statusEl){ statusEl.textContent=`Loading "${ds.label}" from Google Sheets…`; statusEl.style.color='#888'; }
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${TEAM_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
-    const res=await fetch(url,{cache:'no-cache'});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text=await res.text();
+    const text=await fetchSheetCSV(TEAM_SHEET_ID, ds.gid);
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
     const headers=rows[0].slice(0,TEAM_MAX_COLS).map(h=>(h||'').trim());
