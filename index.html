@@ -120,7 +120,11 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 .tt-avg{width:36px;text-align:right;color:#777;flex-shrink:0;font-size:10px}
 
 .pill.pill-hidden{opacity:0.3;border-style:dashed}
-.btn.active-filter{background:#1a2e4a;border-color:#3a6ea5;color:#8fc6ff}
+ .btn.active-filter{background:#1a2e4a;border-color:#3a6ea5;color:#8fc6ff}
+.frag-progress{height:4px;background:#202020;border-radius:4px;overflow:hidden;margin:6px 0 10px}
+.frag-progress-bar{height:100%;width:0;background:#3a6ea5;transition:width .15s ease}
+.frag-progress-bar.indeterminate{width:38%;animation:fragProgress 1.2s ease-in-out infinite}
+@keyframes fragProgress{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
 
 .hm-table{border-collapse:collapse;font-size:9px;white-space:nowrap}
 .hm-table th{padding:2px 5px;color:#555;font-weight:400;text-align:right;position:sticky;left:0;background:#161616;z-index:1;max-width:140px;overflow:hidden;text-overflow:ellipsis}
@@ -503,7 +507,16 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="navtab active" id="fragsSubtab-solo" onclick="setFragsDataset('solo')" style="font-size:11px;padding:6px 16px">Solo Battles</div>
     <div class="navtab" id="fragsSubtab-tag" onclick="setFragsDataset('tag')" style="font-size:11px;padding:6px 16px">Tag Battles</div>
   </div>
-  <div style="flex:1;overflow:auto;padding:14px">
+  <div style="padding:10px 14px 0;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <input id="fragsSearch" type="text" placeholder="Search Pokémon…" oninput="renderFragsView()" style="flex:1;max-width:320px;background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:5px 9px;color:#ccc;font-size:11px">
+      <button class="btn b" onclick="loadFragsData(true)" id="fragsRefreshBtn" style="font-size:11px">Refresh from sheet</button>
+      <a id="fragsSheetLink" href="#" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
+    </div>
+    <div id="fragsStatus" style="font-size:10px;color:#555;margin-top:7px"></div>
+    <div id="fragsProgress" class="frag-progress" style="display:none"><div id="fragsProgressBar" class="frag-progress-bar"></div></div>
+  </div>
+  <div style="flex:1;overflow:auto;padding:0 14px 14px">
     <div id="fragsContent"></div>
   </div>
 </div>
@@ -1056,6 +1069,7 @@ function setFilter(mode){
   document.getElementById('customHint').style.display=mode==='custom'?'inline':'none';
   renderPills();
   updateChart();
+  renderLegend();
 }
 
 function toggleCustomAttempt(id){
@@ -1068,9 +1082,10 @@ function buildDataset(attempt, idx, visibleTrainers){
   const endIdx=attempt.ended ? Math.max(-1, attempt.endedAtIndex-1) : attempt.currentIndex;
   const lastIdx=countLossesGlobal ? (attempt.ended ? attempt.endedAtIndex : attempt.currentIndex) : endIdx;
   const data=trainersArr.map((_,i)=> i<=lastIdx ? cumDeathsEff(attempt,i) : null);
-  const col=ATT_COLORS[idx%ATT_COLORS.length];
+  const top10=new Set(getLegendIndices());
+  const col=(chartFilter==='all' && !top10.has(idx)) ? '#444' : ATT_COLORS[idx%ATT_COLORS.length];
   return {label:attempt.label,data,borderColor:col,backgroundColor:col,
-    borderWidth:attempt.ended?1.5:2.5,pointRadius:1.5,pointHoverRadius:5,tension:0.1,spanGaps:false};
+    borderWidth:(chartFilter==='all'&&!top10.has(idx))?1:attempt.ended?1.5:2.5,pointRadius:(chartFilter==='all'&&!top10.has(idx))?0.8:1.5,pointHoverRadius:5,tension:0.1,spanGaps:false};
 }
 
 function buildFilteredDatasets(visibleTrainers){
@@ -1205,8 +1220,7 @@ function renderStats(){
       let min=Infinity;
       state.attempts.forEach(att=>{
         if(att.id===a.id) return;
-        if(isSkipped(att,i)) return;
-        const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
+          const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
         if(i<=endIdx) min=Math.min(min, cumDeathsEff(att,i));
       });
       return min===Infinity?null:min;
@@ -1359,17 +1373,29 @@ function renderTrainerList(){
   }).join('');
 }
 
+function getLegendIndices(){
+  const visible=getFilteredIndices();
+  if(chartFilter!=='all') return visible;
+  return [...visible].sort((ia,ib)=>{
+    const r=effectiveReach(state.attempts[ib])-effectiveReach(state.attempts[ia]);
+    return r || ia-ib;
+  }).slice(0,10);
+}
+
 function renderLegend(){
   const el=document.getElementById('splitLegend');
-  el.innerHTML=Object.entries(SPLITS_CFG).map(([k,v])=>
+  const splitItems=Object.entries(SPLITS_CFG).map(([k,v])=>
     `<span class="sl-item"><span class="sl-dot" style="background:${v.color}"></span>${k}</span>`
   ).join('');
-  // Attempt line legend
-  const attLeg=state.attempts.map((a,i)=>{
-    const col=ATT_COLORS[i%ATT_COLORS.length];
+  const visible=getFilteredIndices();
+  const legendIndices=getLegendIndices();
+  const attLeg=legendIndices.map(i=>{
+    const a=state.attempts[i], col=ATT_COLORS[i%ATT_COLORS.length];
     return `<span class="sl-item"><span style="display:inline-block;width:16px;height:3px;background:${col};border-radius:2px"></span>${a.label}${a.ended?' (ended)':''}</span>`;
   }).join('');
-  if(attLeg) el.innerHTML+='<span style="color:#333;margin:0 6px">|</span>'+attLeg;
+  let extra='';
+  if(chartFilter==='all' && visible.length>10) extra=`<span class="sl-item" style="color:#444"><span style="display:inline-block;width:16px;height:3px;background:#444;border-radius:2px"></span>${visible.length-10} other attempts</span>`;
+  el.innerHTML=splitItems+(attLeg?'<span style="color:#333;margin:0 6px">|</span>'+attLeg:'')+extra;
 }
 
 function scrollToCurrent(){
@@ -1602,7 +1628,6 @@ function trainerStats(){
   return TRAINERS.map((t,i)=>{
     let total=0, reached=0, passed=0;
     state.attempts.forEach(a=>{
-      if(isSkipped(a,i)) return;
       const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
       const lostHere=a.ended&&a.endedAtIndex===i;
       if(i<=endIdx||lostHere){ reached++; total+=effectiveDeaths(a,i); }
@@ -1618,7 +1643,6 @@ function splitStats(){
     const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
     TRAINERS.forEach((t,i)=>{
       if(i>endIdx) return;
-      if(isSkipped(a,i)) return;
       if(!byS[t.s]) byS[t.s]={deaths:0, count:0};
       byS[t.s].deaths+=a.deaths[i];
       byS[t.s].count++;
@@ -1824,7 +1848,6 @@ function renderPaceChart(){
   const minCum=TRAINERS.map((_,i)=>{
     let min=Infinity;
     state.attempts.forEach(a=>{
-      if(isSkipped(a,i)) return;
       const endIdx=a.ended ? a.endedAtIndex-1 : a.currentIndex;
       if(i<=endIdx) min=Math.min(min, cumDeathsEff(a,i));
     });
@@ -1844,7 +1867,7 @@ function renderPaceChart(){
     return {
       label:a.label,
       data:reachedIndices.map(i=>{
-        if(i>endIdx||isSkipped(a,i)) return null;
+        if(i>endIdx) return null;
         return cumDeathsEff(a,i) - minCum[i];
       }),
       borderColor:col,
@@ -2489,7 +2512,6 @@ function renderBdTable(){
     const cfg=SPLITS_CFG[t.s]||{color:'#888',bg:'rgba(128,128,128,0.2)'};
 
     const attData=state.attempts.map(a=>{
-      if(isSkipped(a,i)) return null;
       const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
       const lostHere=a.ended&&a.endedAtIndex===i;
       if(i>endIdx&&!lostHere) return null;
@@ -2654,7 +2676,6 @@ function renderLcChart(){
   // Build the encounter list, in attempt order (chronological)
   const encounters=[];
   state.attempts.forEach(a=>{
-    if(isSkipped(a,i)) return;
     const endIdx=a.ended?a.endedAtIndex-1:a.currentIndex;
     const lostHere=a.ended&&a.endedAtIndex===i;
     if(i>endIdx && !lostHere) return; // never reached this trainer
@@ -2846,9 +2867,13 @@ function setTeamView(view){
   const need=[TEAM_DATASETS.fulllist];
   if(view==='stats'||view==='breakdown') need.push(TEAM_DATASETS.fallen);
   const missing=need.filter(ds=>!ds.cache);
-  if(missing.length){
-    if(statusEl){ statusEl.textContent='Loading required sheet data…'; statusEl.style.color='#888'; }
-    Promise.all(missing.map(ds=>loadTeamDatasetSilently(ds))).then(()=>{
+  const needsKills=view==='breakdown' && !fragsCaches.solo;
+  if(missing.length || needsKills){
+    if(statusEl){ statusEl.textContent=needsKills ? 'Loading required team and kills data…' : 'Loading required sheet data…'; statusEl.style.color='#888'; }
+    Promise.all([
+      ...missing.map(ds=>loadTeamDatasetSilently(ds)),
+      ...(needsKills?[loadFragsDatasetSilently('solo')]:[])
+    ]).then(()=>{
       if(statusEl){ statusEl.textContent=''; }
       renderTeamComputedView();
     });
@@ -2901,114 +2926,182 @@ function renderTeamComputedView(){
 }
 
 // ─────────────────────────────────────────────────────────────────
-// KILLS — a separate spreadsheet (different doc) tracking frags credited
-// to YOUR Pokémon. Layout: species | encounter freq (ignored, we compute
-// our own) | total frags | avg frags | per-attempt frag columns.
-// ─────────────────────────────────────────────────────────────────
-let killsCache=null; // {headers, rows}
-let killsLoading=false;
-let killsSortKey='totalFrags';
-let killsSortDir='desc';
+// FRAGS — top-level spreadsheet views. Solo and Tag use the same layout.
+// Solo uses KILLS_SHEET_GID from config.js; Tag Battles uses the supplied tab GID.
+const FRAGS_DATASETS={
+  solo:{label:'Solo Battles',gid:(typeof KILLS_SHEET_GID!=='undefined'?KILLS_SHEET_GID:null),cache:null},
+  tag:{label:'Tag Battles',gid:'1290780209',cache:null},
+};
+const fragsCaches={solo:null,tag:null};
+let fragsCurrentDataset='solo';
+let fragsLoading=false;
+let fragsSortKey='totalFrags';
+let fragsSortDir='desc';
 
-async function loadKillsData(forceRefresh){
-  if(killsCache && !forceRefresh){ renderKillsView(); return; }
-  if(killsLoading) return;
-  killsLoading=true;
-  const content=document.getElementById('teamContent');
-  if(content) content.innerHTML='<div style="color:#888;font-size:12px;padding:20px">Loading kills data…</div>';
+function setFragsDataset(dataset){
+  fragsCurrentDataset=dataset==='tag'?'tag':'solo';
+  document.getElementById('fragsSubtab-solo')?.classList.toggle('active',fragsCurrentDataset==='solo');
+  document.getElementById('fragsSubtab-tag')?.classList.toggle('active',fragsCurrentDataset==='tag');
+  const ds=FRAGS_DATASETS[fragsCurrentDataset];
+  const link=document.getElementById('fragsSheetLink');
+  if(link && ds.gid) link.href=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${ds.gid}`;
+  loadFragsData(false);
+}
+
+function setFragsSortKey(key){ fragsSortKey=key; renderFragsView(); }
+function toggleFragsSortDir(){
+  fragsSortDir=fragsSortDir==='desc'?'asc':'desc';
+  renderFragsView();
+}
+
+function setFragProgress(percent, text){
+  const wrap=document.getElementById('fragsProgress');
+  const bar=document.getElementById('fragsProgressBar');
+  const status=document.getElementById('fragsStatus');
+  if(wrap) wrap.style.display='block';
+  if(bar){
+    if(percent===null){ bar.classList.add('indeterminate'); bar.style.width='38%'; }
+    else { bar.classList.remove('indeterminate'); bar.style.width=Math.max(0,Math.min(100,percent))+'%'; }
+  }
+  if(status && text) status.textContent=text;
+}
+
+async function fetchTextWithProgress(url,onProgress){
+  const res=await fetch(url,{cache:'no-cache'});
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const total=Number(res.headers.get('content-length'))||0;
+  if(!res.body || !res.body.getReader){
+    onProgress(null,'Downloading…');
+    return await res.text();
+  }
+  const reader=res.body.getReader();
+  const decoder=new TextDecoder();
+  let received=0, text='';
+  while(true){
+    const {done,value}=await reader.read();
+    if(done) break;
+    received+=value.byteLength;
+    text+=decoder.decode(value,{stream:true});
+    onProgress(total?Math.round(received/total*100):null,total?`Downloading… ${Math.round(received/total*100)}%`:'Downloading…');
+  }
+  text+=decoder.decode();
+  return text;
+}
+
+async function loadFragsDatasetSilently(dataset){
+  const ds=FRAGS_DATASETS[dataset];
+  if(!ds || fragsCaches[dataset]) return fragsCaches[dataset];
+  if(!ds.gid) return null;
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${KILLS_SHEET_GID}`;
-    const res=await fetch(url,{cache:'no-cache'});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text=await res.text();
+    const url=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
+    const text=await fetch(url,{cache:'no-cache'}).then(async res=>{
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.text();
+    });
     const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
     if(!rows.length) throw new Error('Empty response');
-    const headers=rows[0].map(h=>(h||'').trim());
-    const dataRows=rows.slice(1).filter(r=>(r[0]||'').trim()!=='');
-    killsCache={headers, rows:dataRows};
-  }catch(e){
-    console.error('Kills data load failed:',e);
-    if(content){
-      content.innerHTML=`<div style="color:#e05555;font-size:12px;padding:20px">Could not load kills data (${e.message}). `+
-        `<a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="color:#4e79a7">Open it directly ↗</a></div>`;
-    }
-    killsCache=null;
+    fragsCaches[dataset]={headers:rows[0].map(h=>(h||'').trim()),rows:rows.slice(1).filter(r=>(r[0]||'').trim()!=='')};
+    ds.cache=fragsCaches[dataset];
+    return ds.cache;
+  }catch(e){ console.error(`Failed to load ${ds.label}:`,e); return null; }
+}
+
+async function loadFragsData(forceRefresh){
+  const dataset=fragsCurrentDataset;
+  const ds=FRAGS_DATASETS[dataset];
+  if(!ds || !ds.gid){
+    const status=document.getElementById('fragsStatus');
+    if(status) status.textContent='No spreadsheet ID configured for this dataset.';
+    return;
   }
-  killsLoading=false;
-  renderKillsView();
+  if(fragsCaches[dataset] && !forceRefresh){ renderFragsView(); return; }
+  if(fragsLoading) return;
+  fragsLoading=true;
+  const btn=document.getElementById('fragsRefreshBtn');
+  if(btn) btn.disabled=true;
+  setFragProgress(null,`Connecting to ${ds.label}…`);
+  try{
+    const url=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${ds.gid}`;
+    setFragProgress(null,'Downloading…');
+    const text=await fetchTextWithProgress(url,setFragProgress);
+    setFragProgress(null,'Parsing spreadsheet…');
+    const rows=parseCSV(text).filter(r=>r.some(c=>(c||'').trim()!==''));
+    if(!rows.length) throw new Error('Empty response');
+    fragsCaches[dataset]={headers:rows[0].map(h=>(h||'').trim()),rows:rows.slice(1).filter(r=>(r[0]||'').trim()!=='')};
+    ds.cache=fragsCaches[dataset];
+    setFragProgress(100,`Loaded ${fragsCaches[dataset].rows.length} Pokémon rows.`);
+    renderFragsView();
+    setTimeout(()=>{ const w=document.getElementById('fragsProgress'); if(w) w.style.display='none'; },800);
+  }catch(e){
+    console.error('Frags data load failed:',e);
+    const content=document.getElementById('fragsContent');
+    if(content) content.innerHTML=`<div style="color:#e05555;font-size:12px;padding:20px">Could not load ${ds.label} (${e.message}). <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${ds.gid}" target="_blank" style="color:#4e79a7">Open it directly ↗</a></div>`;
+    setFragProgress(100,'Load failed.');
+  }finally{
+    fragsLoading=false;
+    if(btn) btn.disabled=false;
+  }
 }
 
-function setKillsSortKey(key){ killsSortKey=key; renderKillsView(); }
-function toggleKillsSortDir(){
-  killsSortDir = killsSortDir==='desc' ? 'asc' : 'desc';
-  document.getElementById('killsSortDirBtn').textContent = killsSortDir==='desc' ? '↓ High → Low' : '↑ Low → High';
-  renderKillsView();
-}
-
-function renderKillsView(){
-  const content=document.getElementById('teamContent');
-  if(!content||!killsCache) return;
-
-  const {headers, rows}=killsCache;
-  // Expected layout: [species, encounterFreq, totalFrags, avgFrags, ...perAttempt]
+function getFragRows(dataset='solo'){
+  const cache=fragsCaches[dataset];
+  if(!cache) return [];
+  const {headers,rows}=cache;
   const attemptCols=headers.slice(4);
-
-  const parsed=rows.map(r=>({
+  return rows.map(r=>({
     species:normalizeSpecies(r[0]||''),
     totalFrags:parseFloat(r[2])||0,
     avgFrags:parseFloat(r[3])||0,
     perAttempt:attemptCols.map((_,i)=>r[4+i]||''),
   }));
-
-  const sortOptions=[
-    {key:'totalFrags',label:'Total Frags'},
-    {key:'avgFrags',label:'Avg Frags'},
-    {key:'species',label:'Pokémon (A-Z)'},
-  ];
-
-  const sorted=[...parsed].sort((a,b)=>{
-    let diff;
-    if(killsSortKey==='species') diff=a.species.localeCompare(b.species);
-    else diff=(a[killsSortKey]||0)-(b[killsSortKey]||0);
-    return killsSortDir==='desc' ? -diff : diff;
-  });
-
-  const attemptHeaders=attemptCols.map(h=>`<th style="text-align:center;white-space:nowrap;font-size:9px">${h}</th>`).join('');
-  const bodyRows=sorted.map((x,i)=>{
-    const attemptCells=x.perAttempt.map(v=>{
-      const val=(v||'').trim();
-      return `<td style="text-align:center;color:${val?'#ccc':'#333'};font-size:10px">${val||'—'}</td>`;
-    }).join('');
-    return `<tr>
-      <td style="color:#444;text-align:center">${i+1}</td>
-      <td style="white-space:nowrap">${displaySpecies(x.species)}</td>
-      <td style="color:#e05555;font-weight:600;text-align:center">${x.totalFrags}</td>
-      <td style="color:#edc948;text-align:center">${x.avgFrags}</td>
-      ${attemptCells}
-    </tr>`;
-  }).join('');
-
-  content.innerHTML=`
-    <div style="font-size:11px;color:#666;margin-bottom:10px">
-      Kill data collected by <span style="color:#8fc6ff;font-weight:600">${KILLS_CREDIT}</span> — thank you!
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn b" onclick="loadKillsData(true)" style="font-size:11px">Refresh from sheet</button>
-      <select onchange="setKillsSortKey(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px">
-        ${sortOptions.map(o=>`<option value="${o.key}" ${killsSortKey===o.key?'selected':''}>${o.label}</option>`).join('')}
-      </select>
-      <button class="btn" onclick="toggleKillsSortDir()" id="killsSortDirBtn" style="font-size:10px">${killsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button>
-      <a href="https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${KILLS_SHEET_GID}" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
-    </div>
-    <div style="overflow-x:auto">
-      <table class="data-table" style="font-size:11px">
-        <thead><tr>
-          <th></th><th>Pokémon</th><th style="text-align:center">Total Frags</th><th style="text-align:center">Avg Frags</th>${attemptHeaders}
-        </tr></thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
 }
+
+function renderFragsView(){
+  const content=document.getElementById('fragsContent');
+  if(!content) return;
+  const cache=fragsCaches[fragsCurrentDataset];
+  if(!cache){
+    content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No data loaded yet.</div>';
+    return;
+  }
+  const {headers}=cache;
+  const attemptCols=headers.slice(4);
+  const query=(document.getElementById('fragsSearch')?.value||'').trim().toLowerCase();
+  const parsed=getFragRows(fragsCurrentDataset).filter(x=>!query||x.species.toLowerCase().includes(query));
+  const sorted=[...parsed].sort((a,b)=>{
+    const diff=fragsSortKey==='species'?a.species.localeCompare(b.species):(a[fragsSortKey]-b[fragsSortKey]);
+    return fragsSortDir==='desc'?-diff:diff;
+  });
+  const total=parsed.reduce((s,x)=>s+x.totalFrags,0);
+  const attemptHeaders=attemptCols.map(h=>`<th style="text-align:center;white-space:nowrap;font-size:9px">${h}</th>`).join('');
+  const body=sorted.map((x,i)=>`<tr>
+    <td style="color:#444;text-align:center">${i+1}</td>
+    <td style="white-space:nowrap">${displaySpecies(x.species)}</td>
+    <td style="color:#e05555;font-weight:600;text-align:center">${x.totalFrags}</td>
+    <td style="color:#edc948;text-align:center">${x.avgFrags}</td>
+    ${x.perAttempt.map(v=>{const val=(v||'').trim();return `<td style="text-align:center;color:${val?'#ccc':'#333'};font-size:10px">${val||'—'}</td>`}).join('')}
+  </tr>`).join('');
+  content.innerHTML=`
+    <div style="font-size:11px;color:#666;margin:4px 0 10px">${dsLabel(fragsCurrentDataset)} — ${parsed.length} Pokémon, ${total} total frags${query?' matching search':''}.</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select onchange="setFragsSortKey(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px">
+        <option value="totalFrags" ${fragsSortKey==='totalFrags'?'selected':''}>Total Frags</option>
+        <option value="avgFrags" ${fragsSortKey==='avgFrags'?'selected':''}>Avg Frags</option>
+        <option value="species" ${fragsSortKey==='species'?'selected':''}>Pokémon (A-Z)</option>
+      </select>
+      <button class="btn" onclick="toggleFragsSortDir()" style="font-size:10px">${fragsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button>
+    </div>
+    <div style="overflow-x:auto"><table class="data-table" style="font-size:11px;min-width:650px">
+      <thead><tr><th></th><th>Pokémon</th><th style="text-align:center">Total Frags</th><th style="text-align:center">Avg Frags</th>${attemptHeaders}</tr></thead>
+      <tbody>${body||'<tr><td colspan="10" style="color:#444;padding:20px">No matching Pokémon.</td></tr>'}</tbody>
+    </table></div>`;
+}
+function dsLabel(dataset){ return FRAGS_DATASETS[dataset]?.label||dataset; }
+
+// Backwards-compatible aliases for any older code paths.
+let killsCache=null;
+async function loadKillsData(forceRefresh){ return loadFragsData(forceRefresh); }
+function renderKillsView(){ return renderFragsView(); }
 
 async function loadTeamSheet(forceRefresh){
   const creditEl=document.getElementById('teamCreditName');
@@ -3683,6 +3776,8 @@ function renderBreakdownView(){
 
   const obtained=tallyColumn(fullRows, nameIdx, normalizeSpecies);
   const deathsMap=new Map(tallyColumn(fallenRows, fallenNameIdx, normalizeSpecies));
+  const killsRows=getFragRows('solo');
+  const killsMap=new Map(killsRows.map(x=>[x.species,x]));
 
   const METHOD_LABELS=['Grass','Honey Tree','Rock Smash','Old Rod','Good Rod','Super Rod'];
   const methodKey=(m)=>m.replace(/\s+/g,'');
@@ -3704,6 +3799,9 @@ function renderBreakdownView(){
       obtainedPct: totalAttemptsFull>0 ? (count/totalAttemptsFull*100) : 0,
       diedCount:d,
       diedPct: count>0 ? (d/count*100) : 0,
+      kills: killsMap.get(name)?.totalFrags||0,
+      avgKills: killsMap.get(name)?.avgFrags ?? (count>0 ? (killsMap.get(name)?.totalFrags||0)/count : 0),
+      kd: d>0 ? (killsMap.get(name)?.totalFrags||0)/d : ((killsMap.get(name)?.totalFrags||0)>0 ? Infinity : 0),
     };
     const methodCounts=speciesMethodCounts.get(name)||{};
     METHOD_LABELS.forEach(label=>{
@@ -3837,6 +3935,9 @@ function buildSortOptions(){
     {key:'obtainedPct',label:'Obtained (%)'},
     {key:'diedCount',label:'Died (count)'},
     {key:'diedPct',label:'Died (%)'},
+    {key:'kills',label:'Kills'},
+    {key:'kd',label:'K/D'},
+    {key:'avgKills',label:'Average kills'},
   ];
   const methodOpts=statsBreakdownMethods.flatMap(m=>{
     const k=m.replace(/\s+/g,'');
@@ -3882,6 +3983,9 @@ function renderBreakdownTable(){
       <td style="text-align:center">${pctBar(r.obtainedPct,'#59a14f')}</td>
       <td style="color:#e05555;font-weight:600;text-align:center;white-space:nowrap">${r.diedCount}</td>
       <td style="text-align:center">${pctBar(r.diedPct,'#e05555')}</td>
+      <td style="color:#4e79a7;font-weight:600;text-align:center">${r.kills}</td>
+      <td style="color:#edc948;font-weight:600;text-align:center">${r.kd===Infinity?'∞':r.kd.toFixed(2)}</td>
+      <td style="color:#af7aa1;text-align:center">${r.avgKills.toFixed(2)}</td>
       ${methodCells}
     </tr>`;
   }).join('');
@@ -3889,7 +3993,7 @@ function renderBreakdownTable(){
   wrap.innerHTML=`
     <table class="data-table" style="font-size:11px">
       <thead><tr>
-        <th></th><th>Pokémon</th><th style="text-align:center">Obtained</th><th style="text-align:center">%</th><th style="text-align:center">Died</th><th style="text-align:center">%</th>${methodHeaders}
+        <th></th><th>Pokémon</th><th style="text-align:center">Obtained</th><th style="text-align:center">%</th><th style="text-align:center">Died</th><th style="text-align:center">%</th><th style="text-align:center">Kills</th><th style="text-align:center">K/D</th><th style="text-align:center">Avg kills</th>${methodHeaders}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -4115,7 +4219,7 @@ async function pollForNewCatches(manual){
         if(lastAttemptNum!==null){
           text+=` Last time we got ${shownName} was in ${ds.formatGroupLabelFromNumber(lastAttemptNum)}.`;
         }
-        teamAutoLogEntries.unshift({time:Date.now(), text, attempt:ds.formatGroupLabel(entry.row[0])});
+        teamAutoLogEntries.unshift({time:Date.now(), text, attempt:ds.formatGroupLabel(entry.row[0]), species:entry.species, obtainedCount:entry.obtainedCount});
         showCatchNotification(text);
       });
       teamLastSeenCatchCount=running.length;
@@ -4161,35 +4265,49 @@ function copyLogEntry(idx){
   navigator.clipboard.writeText(entry.text).then(()=>showToast('Copied!','#7fd97f'));
 }
 
+function catchLogEntrySpecies(entry){
+  if(entry?.species) return normalizeSpecies(entry.species);
+  const m=(entry?.text||'').match(/^We have obtained (.+?) for the \d+(?:st|nd|rd|th) time/i);
+  return m ? normalizeSpecies(m[1].trim()) : '';
+}
+
 function renderCatchLogView(){
   const content=document.getElementById('teamContent');
   if(!content) return;
-
-  const entriesHtml=teamAutoLogEntries.map((e,i)=>{
+  const species=[...new Set(teamAutoLogEntries.map(catchLogEntrySpecies).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const selected=localStorage.getItem('team_catch_log_species_filter')||'';
+  const filter=species.includes(selected)?selected:'';
+  const entries=filter ? teamAutoLogEntries.filter(e=>catchLogEntrySpecies(e)===filter) : teamAutoLogEntries;
+  const entriesHtml=entries.map((e)=>{
     const dt=new Date(e.time);
     const timeStr=dt.toLocaleString();
     return `<div style="background:#111;border:1px solid #222;border-radius:6px;padding:10px 14px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
         <div style="font-size:12px;color:#cfe4ff">${e.text}</div>
-        <button class="btn" style="font-size:10px;flex-shrink:0" onclick="copyLogEntry(${i})">Copy</button>
+        <button class="btn" style="font-size:10px;flex-shrink:0" onclick="copyLogEntry(${teamAutoLogEntries.indexOf(e)})">Copy</button>
       </div>
-      <div style="font-size:9px;color:#444;margin-top:6px">${timeStr}</div>
+      <div style="font-size:9px;color:#444;margin-top:6px">${timeStr}${e.attempt?` · ${e.attempt}`:''}</div>
     </div>`;
   }).join('');
 
   content.innerHTML=`
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
       <button class="btn b" id="catchLogCheckBtn" onclick="pollForNewCatches(true)" style="font-size:11px">Check now</button>
-      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;cursor:pointer">
+      <select id="catchLogSpeciesFilter" onchange="localStorage.setItem('team_catch_log_species_filter',this.value);renderCatchLogView()" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:4px 7px;color:#ccc;font-size:10px">
+        <option value="">All species / families</option>
+        ${species.map(s=>`<option value="${s}" ${filter===s?'selected':''}>${displaySpecies(s)}</option>`).join('')}
+      </select>
+      <span style="font-size:10px;color:#555">${entries.length} of ${teamAutoLogEntries.length} log entries</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;cursor:pointer;margin-left:auto">
         <input type="checkbox" id="catchLogAutoToggle" onchange="toggleAutoPoll()" ${teamAutoPollEnabled?'checked':''} style="accent-color:#3a6ea5">
         Auto-check every ${TEAM_AUTOLOG_INTERVAL_MIN} min while this tab is open
       </label>
-      <button class="btn" onclick="clearCatchLog()" style="font-size:10px;margin-left:auto;color:#888">Clear log</button>
+      <button class="btn" onclick="clearCatchLog()" style="font-size:10px;color:#888">Clear log</button>
     </div>
     <div style="font-size:10px;color:#444;margin-bottom:14px">
-      ${teamLastSeenCatchCount} catches tracked so far. New entries appear here automatically whenever the sheet gets updated with a fresh row.
+      ${teamLastSeenCatchCount} catches tracked so far. Species/family matching uses the same canonicalisation as the main Pokémon breakdown.
     </div>
-    <div>${entriesHtml||'<div style="color:#444;font-size:12px;padding:20px">No log entries yet — hit "Check now" or wait for auto-check.</div>'}</div>`;
+    <div>${entriesHtml||'<div style="color:#444;font-size:12px;padding:20px">No matching log entries.</div>'}</div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────
