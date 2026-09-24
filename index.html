@@ -3066,6 +3066,7 @@ function getFragRows(dataset='solo'){
   const attemptCols=headers.slice(4);
   return rows.map(r=>({
     species:normalizeSpecies(r[0]||''),
+    matchSpecies:canonicalSpeciesKey(r[0]||''),
     totalFrags:parseFloat(r[2])||0,
     avgFrags:parseFloat(r[3])||0,
     perAttempt:attemptCols.map((_,i)=>r[4+i]||''),
@@ -3605,12 +3606,25 @@ function getSpeciesAliasLookup(){
   }
   return _speciesAliasLookup;
 }
+function canonicalSpeciesKey(name){
+  const trimmed=(name||'').trim();
+  if(!trimmed) return '';
+  const parts=trimmed.split(/\s*\/\s*/).map(p=>p.trim()).filter(Boolean);
+  const resolved=parts.map(p=>getSpeciesAliasLookup().get(p.toLowerCase())||p);
+  // Family entries such as "Slugma / Magcargo" resolve to the same
+  // canonical key as either individual member ("Magcargo").
+  const unique=[...new Set(resolved.map(x=>x.toLowerCase()))];
+  if(unique.length===1) return resolved[0];
+  return resolved.join(' / ');
+}
 function normalizeSpecies(name){
   const trimmed=(name||'').trim();
   if(!trimmed) return '';
-  const alias=getSpeciesAliasLookup().get(trimmed.toLowerCase());
-  const canonical=alias||trimmed;
-  return canonical.split(/\s*\/\s*/).map(titleCaseSpeciesPart).filter(Boolean).join(' / ');
+  const parts=trimmed.split(/\s*\/\s*/).map(p=>p.trim()).filter(Boolean);
+  return parts.map(part=>{
+    const alias=getSpeciesAliasLookup().get(part.toLowerCase());
+    return titleCaseSpeciesPart(alias||part);
+  }).filter(Boolean).join(' / ');
 }
 
 // Display-only nickname lookup — never used for matching/tallying, only for
@@ -3859,7 +3873,10 @@ function renderBreakdownView(){
   const obtained=tallyColumn(fullRows, nameIdx, normalizeSpecies);
   const deathsMap=new Map(tallyColumn(fallenRows, fallenNameIdx, normalizeSpecies));
   const killsRows=getFragRows('solo');
-  const killsMap=new Map(killsRows.map(x=>[x.species,x]));
+  // Match Team species against the canonical family key, not the display
+  // string from the spreadsheet. This makes "Magcargo" match
+  // "Slugma / Magcargo" (and the equivalent baby/evolution families).
+  const killsMap=new Map(killsRows.map(x=>[x.matchSpecies||canonicalSpeciesKey(x.species),x]));
 
   const METHOD_LABELS=['Grass','Honey Tree','Rock Smash','Old Rod','Good Rod','Super Rod'];
   const methodKey=(m)=>m.replace(/\s+/g,'');
@@ -3881,9 +3898,9 @@ function renderBreakdownView(){
       obtainedPct: totalAttemptsFull>0 ? (count/totalAttemptsFull*100) : 0,
       diedCount:d,
       diedPct: count>0 ? (d/count*100) : 0,
-      kills: killsMap.get(name)?.totalFrags||0,
-      avgKills: killsMap.get(name)?.avgFrags ?? (count>0 ? (killsMap.get(name)?.totalFrags||0)/count : 0),
-      kd: d>0 ? (killsMap.get(name)?.totalFrags||0)/d : ((killsMap.get(name)?.totalFrags||0)>0 ? Infinity : 0),
+      kills: killsMap.get(canonicalSpeciesKey(name))?.totalFrags||0,
+      avgKills: killsMap.get(canonicalSpeciesKey(name))?.avgFrags ?? (count>0 ? (killsMap.get(canonicalSpeciesKey(name))?.totalFrags||0)/count : 0),
+      kd: d>0 ? (killsMap.get(canonicalSpeciesKey(name))?.totalFrags||0)/d : ((killsMap.get(canonicalSpeciesKey(name))?.totalFrags||0)>0 ? Infinity : 0),
     };
     const methodCounts=speciesMethodCounts.get(name)||{};
     METHOD_LABELS.forEach(label=>{
