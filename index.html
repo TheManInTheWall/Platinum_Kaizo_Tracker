@@ -506,6 +506,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
   <div style="display:flex;gap:0;border-bottom:1px solid #2a2a2a;flex-shrink:0">
     <div class="navtab active" id="fragsSubtab-solo" onclick="setFragsDataset('solo')" style="font-size:11px;padding:6px 16px">Solo Battles</div>
     <div class="navtab" id="fragsSubtab-tag" onclick="setFragsDataset('tag')" style="font-size:11px;padding:6px 16px">Tag Battles</div>
+    <div class="navtab" id="fragsSubtab-graph" onclick="setFragsSubtab('graph')" style="font-size:11px;padding:6px 16px">Per-attempt graph</div>
   </div>
   <div style="padding:10px 14px 0;flex-shrink:0">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -876,16 +877,24 @@ function effectiveTarget(a){
 }
 
 function effectiveDeaths(a, i){
+  // A skipped trainer contributes zero deaths. The important distinction is
+  // that the run still exists at this trainer, so its cumulative death total
+  // carries forward unchanged.
+  if(isSkipped(a,i)) return 0;
   if(a.ended&&a.endedAtIndex===i) return countLossesGlobal ? getPartySize(a,i) : 0;
   return a.deaths[i]||0;
 }
 
 function cumDeaths(attempt, upTo){
-  let s=0; for(let i=0;i<=upTo&&i<attempt.deaths.length;i++) s+=attempt.deaths[i]; return s;
+  let s=0;
+  for(let i=0;i<=upTo&&i<attempt.deaths.length;i++) s+=attempt.deaths[i];
+  return s;
 }
 
 function cumDeathsEff(attempt, upTo){
-  let s=0; for(let i=0;i<=upTo&&i<TRAINERS.length;i++) s+=effectiveDeaths(attempt,i); return s;
+  let s=0;
+  for(let i=0;i<=upTo&&i<TRAINERS.length;i++) s+=effectiveDeaths(attempt,i);
+  return s;
 }
 
 
@@ -1215,28 +1224,31 @@ function renderStats(){
     const ci=a.currentIndex;
     const myCum=cumDeaths(a,ci);
 
-    // Build minCum across all OTHER attempts for every trainer index
+    // Best-ever pace is cumulative. A skipped trainer is treated as 0 deaths,
+    // meaning the run's cumulative total simply carries forward at that point.
+    // Example: 4, 4, 4, 4, [skipped], 4 => cumulative best stays 16 at the
+    // skipped trainer rather than discarding that attempt from the comparison.
     const minCumByIdx=TRAINERS.map((_,i)=>{
       let min=Infinity;
       state.attempts.forEach(att=>{
         if(att.id===a.id) return;
-          const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
-        if(i<=endIdx) min=Math.min(min, cumDeathsEff(att,i));
+        const endIdx=att.ended?att.endedAtIndex-1:att.currentIndex;
+        if(i<=endIdx) min=Math.min(min,cumDeathsEff(att,i));
       });
       return min===Infinity?null:min;
     });
 
     // Pace delta at current position
-    const bestCumHere=minCumByIdx[ci];
+    const bestDeathsHere=minCumByIdx[ci];
     const paceEl=document.getElementById('statPace');
-    if(bestCumHere===null){
+    if(bestDeathsHere===null){
       paceEl.textContent='only run'; paceEl.style.color='';
       bestAtEl.textContent='—';
       bestEverEl.textContent='—';
       fightsUntilPBEl.textContent='—';
       nextPaceDeathEl.textContent='—';
     } else {
-      const delta=myCum-bestCumHere;
+      const delta=cumDeathsEff(a,ci)-bestDeathsHere;
       if(delta===0){ paceEl.textContent='on best pace'; paceEl.style.color='#7fd97f'; }
       else if(delta>0){ paceEl.textContent=`+${delta} behind`; paceEl.style.color=delta>5?'#e05555':'#edc948'; }
       else { paceEl.textContent=`${Math.abs(delta)} ahead`; paceEl.style.color='#7fd97f'; }
@@ -1246,11 +1258,11 @@ function renderStats(){
         bestAtEl.textContent='—';
         bestEverEl.textContent='—';
       } else {
-        // "Best again at" — first future trainer where best-ever cum >= myCum
+        // "Best again at" — first future trainer where this trainer's best-ever death count is at least the current trainer's death count
         let bestAgainTrainer=null;
         for(let j=ci+1;j<TRAINERS.length;j++){
           const bc=minCumByIdx[j];
-          if(bc!==null && myCum<=bc){ bestAgainTrainer=j; break; }
+          if(bc!==null && cumDeathsEff(a,ci)<=bc){ bestAgainTrainer=j; break; }
         }
         if(bestAgainTrainer!==null){
           bestAtEl.textContent=`#${bestAgainTrainer+1} ${TRAINERS[bestAgainTrainer].n}`;
@@ -1260,11 +1272,11 @@ function renderStats(){
           bestAtEl.style.color='#555';
         }
 
-        // "Best ever at" — first future trainer where, with 0 deaths, this run is strictly ahead of all others
+        // "Best ever at" — first future trainer where the current death count would be strictly better than every recorded death count
         let bestEverTrainer=null;
         for(let j=ci+1;j<TRAINERS.length;j++){
           const bc=minCumByIdx[j];
-          if(bc!==null && myCum<bc){ bestEverTrainer=j; break; }
+          if(bc!==null && cumDeathsEff(a,ci)<bc){ bestEverTrainer=j; break; }
         }
         if(bestEverTrainer!==null){
           bestEverEl.textContent=`#${bestEverTrainer+1} ${TRAINERS[bestEverTrainer].n}`;
@@ -1293,15 +1305,13 @@ function renderStats(){
         else fightsUntilPBEl.textContent='already there';
       }
 
-      // Next pace death — next trainer, from here on, where the record-pace line itself takes a hit
-      // (monotonic minCumByIdx: an increase means the best-ever composite died there)
+      // Next trainer where the current death count would no longer be at or below
+      // that trainer's individual best.
       let nextPaceDeathTrainer=null;
-      let prevKnown=bestCumHere;
+      const myDeathsHere=cumDeathsEff(a,ci);
       for(let j=ci+1;j<TRAINERS.length;j++){
         const bc=minCumByIdx[j];
-        if(bc===null) continue;
-        if(bc>prevKnown){ nextPaceDeathTrainer=j; break; }
-        prevKnown=bc;
+        if(bc!==null && myDeathsHere>bc){ nextPaceDeathTrainer=j; break; }
       }
       if(nextPaceDeathTrainer!==null){
         nextPaceDeathEl.textContent=`#${nextPaceDeathTrainer+1} ${TRAINERS[nextPaceDeathTrainer].n}`;
@@ -1362,7 +1372,7 @@ function renderTrainerList(){
     const d=a?a.deaths[i]:0;
     const canToggle=a&&i<a.currentIndex;
     const skipBtn=canToggle
-      ?`<span class="ti-skip" title="${skipped?'Mark as fought':'Mark as NOT fought (skipped)'}" onclick="event.stopPropagation();toggleSkip(${i})">${skipped?'⊘':'○'}</span>`
+      ?`<button class="ti-skip" title="${skipped?'Mark as fought again':'Mark as NOT fought (skipped)'}" onclick="event.stopPropagation();toggleSkip(${i})">${skipped?'UNSKIP':'SKIP'}</button>`
       :'';
     return `<div class="${cls}" id="ti-${i}" onclick="jumpToTrainer(${i})" title="${skipped?'SKIPPED — not actually fought. ':''}Jump to ${t.n}">
       <span class="ti-dot" style="background:${cfg.color}"></span>
@@ -2937,11 +2947,16 @@ let fragsCurrentDataset='solo';
 let fragsLoading=false;
 let fragsSortKey='totalFrags';
 let fragsSortDir='desc';
-
+let fragsSubtab='table';
+let fragsGraphInst=null;
+let fragsGraphMode='top10';
+function setFragsSubtab(tab){fragsSubtab=tab==='graph'?'graph':'table';document.getElementById('fragsSubtab-graph')?.classList.toggle('active',fragsSubtab==='graph');document.getElementById('fragsSubtab-solo')?.classList.toggle('active',fragsSubtab==='table'&&fragsCurrentDataset==='solo');document.getElementById('fragsSubtab-tag')?.classList.toggle('active',fragsSubtab==='table'&&fragsCurrentDataset==='tag');renderFragsView();}
 function setFragsDataset(dataset){
   fragsCurrentDataset=dataset==='tag'?'tag':'solo';
+  fragsSubtab='table';
   document.getElementById('fragsSubtab-solo')?.classList.toggle('active',fragsCurrentDataset==='solo');
   document.getElementById('fragsSubtab-tag')?.classList.toggle('active',fragsCurrentDataset==='tag');
+  document.getElementById('fragsSubtab-graph')?.classList.remove('active');
   const ds=FRAGS_DATASETS[fragsCurrentDataset];
   const link=document.getElementById('fragsSheetLink');
   if(link && ds.gid) link.href=`https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/edit?gid=${ds.gid}`;
@@ -3053,12 +3068,34 @@ function getFragRows(dataset='solo'){
     totalFrags:parseFloat(r[2])||0,
     avgFrags:parseFloat(r[3])||0,
     perAttempt:attemptCols.map((_,i)=>r[4+i]||''),
+    perAttemptNums:attemptCols.map((_,i)=>parseFloat(r[4+i])||0),
   }));
 }
 
+
+function getFragAttemptTotals(dataset=fragsCurrentDataset){
+  const cache=fragsCaches[dataset]; if(!cache) return [];
+  const rows=getFragRows(dataset);
+  return cache.headers.slice(4).map((label,index)=>({label,index,total:rows.reduce((sum,row)=>sum+(parseFloat(row.perAttempt[index])||0),0)}));
+}
+function setFragsGraphMode(mode){fragsGraphMode=['top10','top20','last10','all'].includes(mode)?mode:'top10';renderFragsView();}
+function renderFragsGraph(){
+  const content=document.getElementById('fragsContent'); if(!content) return;
+  const totals=getFragAttemptTotals();
+  if(!totals.length){content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No attempt data loaded yet.</div>';return;}
+  let selected;
+  if(fragsGraphMode==='all') selected=totals;
+  else if(fragsGraphMode==='last10') selected=totals.slice(-10);
+  else {const n=fragsGraphMode==='top20'?20:10;selected=[...totals].sort((a,b)=>b.total-a.total).slice(0,n).sort((a,b)=>a.index-b.index);}
+  content.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;flex-wrap:wrap"><span style="font-size:11px;color:#666">Total frags per attempt</span><select onchange="setFragsGraphMode(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px"><option value="top10" ${fragsGraphMode==='top10'?'selected':''}>Top 10</option><option value="top20" ${fragsGraphMode==='top20'?'selected':''}>Top 20</option><option value="last10" ${fragsGraphMode==='last10'?'selected':''}>Last 10</option><option value="all" ${fragsGraphMode==='all'?'selected':''}>All attempts</option></select><span style="font-size:10px;color:#555">${selected.length} shown · ${totals.length} total attempts</span></div><div style="position:relative;height:min(65vh,520px);min-height:300px"><canvas id="fragsGraphCanvas"></canvas></div>`;
+  if(fragsGraphInst){fragsGraphInst.destroy();fragsGraphInst=null;}
+  fragsGraphInst=new Chart(document.getElementById('fragsGraphCanvas'),{type:'line',data:{labels:selected.map(x=>x.label),datasets:[{label:'Total frags',data:selected.map(x=>x.total),borderColor:'#59a14f',backgroundColor:'rgba(89,161,79,.12)',pointRadius:3,pointHoverRadius:5,tension:.2,fill:true}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#666',font:{size:9}},grid:{color:'rgba(255,255,255,.03)'}},y:{beginAtZero:true,ticks:{color:'#666',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+}
 function renderFragsView(){
   const content=document.getElementById('fragsContent');
   if(!content) return;
+  if(fragsSubtab==='graph'){renderFragsGraph();return;}
+  if(fragsGraphInst){fragsGraphInst.destroy();fragsGraphInst=null;}
   const cache=fragsCaches[fragsCurrentDataset];
   if(!cache){
     content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No data loaded yet.</div>';
@@ -3073,14 +3110,18 @@ function renderFragsView(){
     return fragsSortDir==='desc'?-diff:diff;
   });
   const total=parsed.reduce((s,x)=>s+x.totalFrags,0);
+  const allRows=getFragRows(fragsCurrentDataset);
+  const top3ByAttempt=attemptCols.map((_,ai)=>new Set([...allRows].sort((a,b)=>(b.perAttemptNums[ai]||0)-(a.perAttemptNums[ai]||0)).slice(0,3).filter(x=>(x.perAttemptNums[ai]||0)>0).map(x=>x.species)));
+  const attemptTotals=getFragAttemptTotals(fragsCurrentDataset);
   const attemptHeaders=attemptCols.map(h=>`<th style="text-align:center;white-space:nowrap;font-size:9px">${h}</th>`).join('');
   const body=sorted.map((x,i)=>`<tr>
     <td style="color:#444;text-align:center">${i+1}</td>
     <td style="white-space:nowrap">${displaySpecies(x.species)}</td>
     <td style="color:#e05555;font-weight:600;text-align:center">${x.totalFrags}</td>
     <td style="color:#edc948;text-align:center">${x.avgFrags}</td>
-    ${x.perAttempt.map(v=>{const val=(v||'').trim();return `<td style="text-align:center;color:${val?'#ccc':'#333'};font-size:10px">${val||'—'}</td>`}).join('')}
+    ${x.perAttempt.map((v,ai)=>{const val=(v||'').trim();const top=top3ByAttempt[ai]?.has(x.species)&&x.perAttemptNums[ai]>0;return `<td style="text-align:center;color:${top?'#7fd97f':(val?'#ccc':'#333')};font-size:10px;font-weight:${top?'700':'400'}">${val||'—'}</td>`}).join('')}
   </tr>`).join('');
+  const totalRow=`<tr style="border-top:2px solid #333;background:#0d0d0d"><td></td><td style="color:#aaa;font-weight:600">Attempt total</td><td style="color:#e05555;font-weight:700;text-align:center">${total}</td><td></td>${attemptTotals.map(x=>`<td style="text-align:center;color:#8fc6ff;font-weight:700;font-size:10px">${x.total||'—'}</td>`).join('')}</tr>`;
   content.innerHTML=`
     <div style="font-size:11px;color:#666;margin:4px 0 10px">${dsLabel(fragsCurrentDataset)} — ${parsed.length} Pokémon, ${total} total frags${query?' matching search':''}.</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -3089,11 +3130,11 @@ function renderFragsView(){
         <option value="avgFrags" ${fragsSortKey==='avgFrags'?'selected':''}>Avg Frags</option>
         <option value="species" ${fragsSortKey==='species'?'selected':''}>Pokémon (A-Z)</option>
       </select>
-      <button class="btn" onclick="toggleFragsSortDir()" style="font-size:10px">${fragsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button>
+      <button class="btn" onclick="toggleFragsSortDir()" style="font-size:10px">${fragsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button><button class="btn" onclick="setFragsSubtab('graph')" style="font-size:10px">📈 Per-attempt graph</button><span style="font-size:9px;color:#555">Green = top 3 Pokémon for that attempt</span>
     </div>
     <div style="overflow-x:auto"><table class="data-table" style="font-size:11px;min-width:650px">
       <thead><tr><th></th><th>Pokémon</th><th style="text-align:center">Total Frags</th><th style="text-align:center">Avg Frags</th>${attemptHeaders}</tr></thead>
-      <tbody>${body||'<tr><td colspan="10" style="color:#444;padding:20px">No matching Pokémon.</td></tr>'}</tbody>
+      <tbody>${body||'<tr><td colspan="10" style="color:#444;padding:20px">No matching Pokémon.</td></tr>'}${body?totalRow:''}</tbody>
     </table></div>`;
 }
 function dsLabel(dataset){ return FRAGS_DATASETS[dataset]?.label||dataset; }
@@ -3526,9 +3567,10 @@ function normalizeSpecies(name){
   const trimmed=(name||'').trim();
   if(!trimmed) return '';
   const alias=getSpeciesAliasLookup().get(trimmed.toLowerCase());
-  if(alias) return alias;
-  // No alias — canonicalise casing so LUVDISC / Luvdisc / luvdisc unify.
-  return trimmed.charAt(0).toUpperCase()+trimmed.slice(1).toLowerCase();
+  const canonical=alias||trimmed;
+  // Family labels can contain slash-separated names: "Slugma / magcargo"
+  // should display consistently as "Slugma / Magcargo".
+  return canonical.split(/\s*\/\s*/).map(part=>{const p=part.trim();return p?p.charAt(0).toUpperCase()+p.slice(1).toLowerCase():'';}).filter(Boolean).join(' / ');
 }
 
 // Display-only nickname lookup — never used for matching/tallying, only for
