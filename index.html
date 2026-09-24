@@ -480,6 +480,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
 <div class="page" id="page-team" style="flex-direction:column;overflow:hidden">
   <div style="padding:8px 14px 0;font-size:11px;color:#666;flex-shrink:0">
     Data collected by <span id="teamCreditName" style="color:#8fc6ff;font-weight:600">—</span> — thank you!
+    <span style="margin-left:10px">Frags collected by <span id="teamFragsCreditName" style="color:#8fc6ff;font-weight:600">—</span> — thank you!</span>
   </div>
   <div style="display:flex;gap:0;border-bottom:1px solid #2a2a2a;flex-shrink:0;margin-top:6px">
     <div class="navtab active" id="teamSubtab-fulllist" onclick="setTeamView('fulllist')" style="font-size:11px;padding:6px 16px">Full List</div>
@@ -3177,6 +3178,11 @@ function renderKillsView(){ return renderFragsView(); }
 async function loadTeamSheet(forceRefresh){
   const creditEl=document.getElementById('teamCreditName');
   if(creditEl) creditEl.textContent=TEAM_CREDIT;
+  const fragsCreditEl=document.getElementById('teamFragsCreditName');
+  if(fragsCreditEl){
+    const raw=(typeof KILLS_CREDIT!=='undefined'?KILLS_CREDIT:'').trim();
+    fragsCreditEl.textContent=raw.replace(/^\/+/, '');
+  }
   const statusEl=document.getElementById('teamStatus');
   const btn=document.getElementById('teamRefreshBtn');
   const ds=TEAM_DATASETS[teamCurrentDataset];
