@@ -515,6 +515,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
       <a id="fragsSheetLink" href="#" target="_blank" style="font-size:10px;color:#555;text-decoration:none;margin-left:auto">Open sheet ↗</a>
     </div>
     <div id="fragsStatus" style="font-size:10px;color:#555;margin-top:7px"></div>
+    <div id="fragsCredit" style="font-size:10px;color:#555;margin-top:5px">Data collected by <span id="fragsCreditName" style="color:#8fc6ff;font-weight:600">—</span> — thank you!</div>
     <div id="fragsProgress" class="frag-progress" style="display:none"><div id="fragsProgressBar" class="frag-progress-bar"></div></div>
   </div>
   <div style="flex:1;overflow:auto;padding:0 14px 14px">
@@ -3110,6 +3111,11 @@ function renderFragsGraph(){
   });
 }
 function renderFragsView(){
+  const creditEl=document.getElementById('fragsCreditName');
+  if(creditEl){
+    const raw=(typeof KILLS_CREDIT!=='undefined'?KILLS_CREDIT:'').trim();
+    creditEl.textContent=raw.replace(/^\/+/, '');
+  }
   const content=document.getElementById('fragsContent');
   if(!content) return;
   if(fragsSubtab==='graph'){renderFragsGraph();return;}
