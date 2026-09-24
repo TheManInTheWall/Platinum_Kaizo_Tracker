@@ -3076,20 +3076,38 @@ function getFragRows(dataset='solo'){
 function getFragAttemptTotals(dataset=fragsCurrentDataset){
   const cache=fragsCaches[dataset]; if(!cache) return [];
   const rows=getFragRows(dataset);
-  return cache.headers.slice(4).map((label,index)=>({label,index,total:rows.reduce((sum,row)=>sum+(parseFloat(row.perAttempt[index])||0),0)}));
+  return cache.headers.slice(4).map((label,index)=>({label,index,total:rows.reduce((sum,row)=>sum+(row.perAttemptNums[index]||0),0)}));
 }
-function setFragsGraphMode(mode){fragsGraphMode=['top10','top20','last10','all'].includes(mode)?mode:'top10';renderFragsView();}
+function getFragCumulativeSeries(dataset=fragsCurrentDataset){
+  const cache=fragsCaches[dataset]; if(!cache) return [];
+  return getFragRows(dataset).map(row=>{
+    let running=0;
+    const cumulative=row.perAttemptNums.map(v=>(running+=v));
+    return {...row,cumulative};
+  });
+}
+function setFragsGraphMode(mode){
+  fragsGraphMode=['top10','top20','last10','all'].includes(mode)?mode:'top10';
+  renderFragsView();
+}
 function renderFragsGraph(){
   const content=document.getElementById('fragsContent'); if(!content) return;
-  const totals=getFragAttemptTotals();
-  if(!totals.length){content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No attempt data loaded yet.</div>';return;}
+  const rows=getFragCumulativeSeries();
+  if(!rows.length){content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">No attempt data loaded yet.</div>';return;}
+  const attemptLabels=fragsCaches[fragsCurrentDataset].headers.slice(4);
+  const ranked=[...rows].sort((a,b)=>b.totalFrags-a.totalFrags);
   let selected;
-  if(fragsGraphMode==='all') selected=totals;
-  else if(fragsGraphMode==='last10') selected=totals.slice(-10);
-  else {const n=fragsGraphMode==='top20'?20:10;selected=[...totals].sort((a,b)=>b.total-a.total).slice(0,n).sort((a,b)=>a.index-b.index);}
-  content.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;flex-wrap:wrap"><span style="font-size:11px;color:#666">Total frags per attempt</span><select onchange="setFragsGraphMode(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px"><option value="top10" ${fragsGraphMode==='top10'?'selected':''}>Top 10</option><option value="top20" ${fragsGraphMode==='top20'?'selected':''}>Top 20</option><option value="last10" ${fragsGraphMode==='last10'?'selected':''}>Last 10</option><option value="all" ${fragsGraphMode==='all'?'selected':''}>All attempts</option></select><span style="font-size:10px;color:#555">${selected.length} shown · ${totals.length} total attempts</span></div><div style="position:relative;height:min(65vh,520px);min-height:300px"><canvas id="fragsGraphCanvas"></canvas></div>`;
+  if(fragsGraphMode==='all') selected=ranked;
+  else if(fragsGraphMode==='last10') selected=ranked; // kept as a selection mode; x-axis remains the full run
+  else selected=ranked.slice(0,fragsGraphMode==='top20'?20:10);
+  const modeLabel=fragsGraphMode==='all'?'All Pokémon':fragsGraphMode==='top20'?'Top 20':'Top 10';
+  content.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;flex-wrap:wrap"><span style="font-size:11px;color:#666">Cumulative frags by Pokémon</span><select onchange="setFragsGraphMode(this.value)" style="background:#111;border:1px solid #2a2a2a;border-radius:4px;padding:3px 6px;color:#ccc;font-size:10px"><option value="top10" ${fragsGraphMode==='top10'?'selected':''}>Top 10</option><option value="top20" ${fragsGraphMode==='top20'?'selected':''}>Top 20</option><option value="all" ${fragsGraphMode==='all'?'selected':''}>All Pokémon</option></select><span style="font-size:10px;color:#555">${selected.length} lines · ${attemptLabels.length} attempts · ${modeLabel}</span></div><div style="position:relative;height:min(65vh,560px);min-height:320px"><canvas id="fragsGraphCanvas"></canvas></div>`;
   if(fragsGraphInst){fragsGraphInst.destroy();fragsGraphInst=null;}
-  fragsGraphInst=new Chart(document.getElementById('fragsGraphCanvas'),{type:'line',data:{labels:selected.map(x=>x.label),datasets:[{label:'Total frags',data:selected.map(x=>x.total),borderColor:'#59a14f',backgroundColor:'rgba(89,161,79,.12)',pointRadius:3,pointHoverRadius:5,tension:.2,fill:true}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#666',font:{size:9}},grid:{color:'rgba(255,255,255,.03)'}},y:{beginAtZero:true,ticks:{color:'#666',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+  fragsGraphInst=new Chart(document.getElementById('fragsGraphCanvas'),{
+    type:'line',
+    data:{labels:attemptLabels,datasets:selected.map(row=>({label:displaySpecies(row.species),data:row.cumulative,borderWidth:2,pointRadius:1.5,pointHoverRadius:4,tension:.15,fill:false}))},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'right',labels:{color:'#aaa',font:{size:9},boxWidth:18,padding:8}}},scales:{x:{ticks:{color:'#666',font:{size:9},autoSkip:true,maxTicksLimit:20},grid:{color:'rgba(255,255,255,.03)'}},y:{beginAtZero:true,ticks:{color:'#666',font:{size:9},stepSize:1},grid:{color:'rgba(255,255,255,.04)'},title:{display:true,text:'cumulative frags',color:'#555',font:{size:10}}}}}
+  });
 }
 function renderFragsView(){
   const content=document.getElementById('fragsContent');
@@ -3111,7 +3129,12 @@ function renderFragsView(){
   });
   const total=parsed.reduce((s,x)=>s+x.totalFrags,0);
   const allRows=getFragRows(fragsCurrentDataset);
-  const top3ByAttempt=attemptCols.map((_,ai)=>new Set([...allRows].sort((a,b)=>(b.perAttemptNums[ai]||0)-(a.perAttemptNums[ai]||0)).slice(0,3).filter(x=>(x.perAttemptNums[ai]||0)>0).map(x=>x.species)));
+  const fragRanksByAttempt=attemptCols.map((_,ai)=>{
+    const ranked=[...allRows].filter(x=>(x.perAttemptNums[ai]||0)>0).sort((a,b)=>(b.perAttemptNums[ai]||0)-(a.perAttemptNums[ai]||0));
+    const max=ranked[0]?.perAttemptNums[ai]||0;
+    const medals=new Map(ranked.slice(0,3).map((x,rank)=>[x.species,rank]));
+    return {max,medals};
+  });
   const attemptTotals=getFragAttemptTotals(fragsCurrentDataset);
   const attemptHeaders=attemptCols.map(h=>`<th style="text-align:center;white-space:nowrap;font-size:9px">${h}</th>`).join('');
   const body=sorted.map((x,i)=>`<tr>
@@ -3119,7 +3142,7 @@ function renderFragsView(){
     <td style="white-space:nowrap">${displaySpecies(x.species)}</td>
     <td style="color:#e05555;font-weight:600;text-align:center">${x.totalFrags}</td>
     <td style="color:#edc948;text-align:center">${x.avgFrags}</td>
-    ${x.perAttempt.map((v,ai)=>{const val=(v||'').trim();const top=top3ByAttempt[ai]?.has(x.species)&&x.perAttemptNums[ai]>0;return `<td style="text-align:center;color:${top?'#7fd97f':(val?'#ccc':'#333')};font-size:10px;font-weight:${top?'700':'400'}">${val||'—'}</td>`}).join('')}
+    ${x.perAttempt.map((v,ai)=>{const val=(v||'').trim();const n=x.perAttemptNums[ai]||0;const rank=fragRanksByAttempt[ai]?.medals.get(x.species);const max=fragRanksByAttempt[ai]?.max||0;let color=val?'#ccc':'#333',weight='400',extra='';if(n>0&&rank!==undefined){color=['#d9b44a','#c0c0c0','#b87333'][rank];weight='800';extra=rank===0?' title="🥇 1st"':rank===1?' title="🥈 2nd"':' title="🥉 3rd"';}else if(n>0&&max>0&&n>=max/2){color='#7fd97f';weight='700';extra=' title="≥50% of this attempt’s top frag"';}return `<td${extra} style="text-align:center;color:${color};font-size:10px;font-weight:${weight}">${val||'—'}</td>`}).join('')}
   </tr>`).join('');
   const totalRow=`<tr style="border-top:2px solid #333;background:#0d0d0d"><td></td><td style="color:#aaa;font-weight:600">Attempt total</td><td style="color:#e05555;font-weight:700;text-align:center">${total}</td><td></td>${attemptTotals.map(x=>`<td style="text-align:center;color:#8fc6ff;font-weight:700;font-size:10px">${x.total||'—'}</td>`).join('')}</tr>`;
   content.innerHTML=`
@@ -3130,7 +3153,7 @@ function renderFragsView(){
         <option value="avgFrags" ${fragsSortKey==='avgFrags'?'selected':''}>Avg Frags</option>
         <option value="species" ${fragsSortKey==='species'?'selected':''}>Pokémon (A-Z)</option>
       </select>
-      <button class="btn" onclick="toggleFragsSortDir()" style="font-size:10px">${fragsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button><button class="btn" onclick="setFragsSubtab('graph')" style="font-size:10px">📈 Per-attempt graph</button><span style="font-size:9px;color:#555">Green = top 3 Pokémon for that attempt</span>
+      <button class="btn" onclick="toggleFragsSortDir()" style="font-size:10px">${fragsSortDir==='desc'?'↓ High → Low':'↑ Low → High'}</button><button class="btn" onclick="setFragsSubtab('graph')" style="font-size:10px">📈 Per-attempt graph</button><span style="font-size:9px;color:#555">🥇🥈🥉 = top 3 · green = ≥50% of that attempt’s top frag</span>
     </div>
     <div style="overflow-x:auto"><table class="data-table" style="font-size:11px;min-width:650px">
       <thead><tr><th></th><th>Pokémon</th><th style="text-align:center">Total Frags</th><th style="text-align:center">Avg Frags</th>${attemptHeaders}</tr></thead>
@@ -3553,12 +3576,25 @@ function tallyColumn(rows, idx, transform){
 // Case-insensitive: "luvdisc", "LUVDISC" and "Luvdisc" all resolve to the
 // same canonical entry, so sheet casing inconsistencies don't split rows.
 let _speciesAliasLookup=null;
+function titleCaseSpeciesPart(part){
+  return (part||'').trim().toLowerCase().replace(/(^|[\s-])([a-z])/g,(_,sep,ch)=>sep+ch.toUpperCase())
+    .replace(/\bJr\.?\b/gi,'Jr.')
+    .replace(/\bSr\.?\b/gi,'Sr.');
+}
 function getSpeciesAliasLookup(){
   if(_speciesAliasLookup) return _speciesAliasLookup;
   _speciesAliasLookup=new Map();
   if(typeof SPECIES_ALIASES!=='undefined'){
     Object.entries(SPECIES_ALIASES).forEach(([from,to])=>{
-      _speciesAliasLookup.set(from.trim().toLowerCase(), to);
+      const target=String(to||from).trim();
+      _speciesAliasLookup.set(String(from).trim().toLowerCase(), target);
+      // Also make every member of a slash-separated family resolve to the
+      // same canonical family. This is important for K/D matching: a frag
+      // sheet may say "Slugma / Magcargo" while Team rows say "Magcargo".
+      target.split(/\s*\/\s*/).forEach(member=>{
+        const m=member.trim().toLowerCase();
+        if(m) _speciesAliasLookup.set(m,target);
+      });
     });
   }
   return _speciesAliasLookup;
@@ -3568,9 +3604,7 @@ function normalizeSpecies(name){
   if(!trimmed) return '';
   const alias=getSpeciesAliasLookup().get(trimmed.toLowerCase());
   const canonical=alias||trimmed;
-  // Family labels can contain slash-separated names: "Slugma / magcargo"
-  // should display consistently as "Slugma / Magcargo".
-  return canonical.split(/\s*\/\s*/).map(part=>{const p=part.trim();return p?p.charAt(0).toUpperCase()+p.slice(1).toLowerCase():'';}).filter(Boolean).join(' / ');
+  return canonical.split(/\s*\/\s*/).map(titleCaseSpeciesPart).filter(Boolean).join(' / ');
 }
 
 // Display-only nickname lookup — never used for matching/tallying, only for
