@@ -19735,7 +19735,7 @@
       "label": "Attempt 47",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 76,
+      "currentIndex": 78,
       "deaths": [
         0,
         0,
@@ -19809,6 +19809,8 @@
         0,
         0,
         0,
+        0,
+        1,
         0,
         1,
         0,
@@ -20149,9 +20151,11 @@
         0,
         0,
         0,
-        0,
-        0,
         0
+      ],
+      "skipped": [
+        68,
+        69
       ]
     }
   ],
