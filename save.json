@@ -19735,7 +19735,7 @@
       "label": "Attempt 47",
       "ended": false,
       "endedAtIndex": null,
-      "currentIndex": 85,
+      "currentIndex": 91,
       "deaths": [
         0,
         0,
@@ -20158,7 +20158,10 @@
         69,
         81,
         82,
-        84
+        84,
+        86,
+        87,
+        89
       ]
     }
   ],
