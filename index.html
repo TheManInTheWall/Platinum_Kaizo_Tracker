@@ -3480,13 +3480,27 @@ function renderIndividualMons(){
   // NATURE, HP, ATK, DEF, SPA, SPD, SPE, NOTES.
   // POKEMON is column C (index 2); do not use the old Full List fallback index.
   const nameHeaderIdx=findHeaderIdx(headers,'POKEMON');
-  const nameIdx=nameHeaderIdx>=0?nameHeaderIdx:2;
   const natureIdx=findHeaderIdx(headers,'NATURE');
   const locationIdx=findHeaderIdx(headers,'MET LOCATION');
+
+  // Prefer the POKEMON header, but don't silently render an empty table if
+  // the live CSV's values don't line up with its header row.
+  const nonEmptyCount=idx=>idx<0?0:ds.cache.filter(r=>String(r[idx]||'').trim()!=='').length;
+  let nameIdx=nameHeaderIdx;
+  if(nonEmptyCount(nameIdx)===0){
+    // Older versions of this sheet placed Pokémon names in column E.
+    // Only use that legacy position when it actually contains text names.
+    const legacyIdx=4;
+    const legacyTextCount=ds.cache.filter(r=>{
+      const v=String(r[legacyIdx]||'').trim();
+      return v!==''&&!/^[-+]?\\d+(?:\\.\\d+)?$/.test(v);
+    }).length;
+    if(legacyTextCount>0) nameIdx=legacyIdx;
+  }
   // Attempt cells are merged in Sheets. The loader forward-fills column A,
   // so include every row with a Pokémon name rather than rejecting rows by
   // re-validating the attempt label.
-  const rows=ds.cache.filter(r=>String(r[nameIdx]||'').trim()!=='')
+  const rows=nameIdx>=0?ds.cache.filter(r=>String(r[nameIdx]||'').trim()!=='')
     .map((r,index)=>{
       const stats={};
       IV_STAT_NAMES.forEach((stat,i)=>{
@@ -3506,7 +3520,17 @@ function renderIndividualMons(){
         location:locationIdx>=0?String(r[locationIdx]||'').trim():'',
         stats,sum,hpType:hp.type,hpPower:hp.power
       };
-    });
+    }):[];
+
+  // If the sheet's current CSV layout differs from the expected headers,
+  // show the raw shape instead of a misleading "0 Pokémon" table.
+  if(!rows.length){
+    const escDebug=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const sample=ds.cache.slice(0,3).map((r,ri)=>'<tr><td style="padding:4px;color:#777">'+(ri+1)+'</td>'+r.slice(0,Math.max(headers.length,11)).map(v=>'<td style="padding:4px;white-space:nowrap">'+escDebug(v||'')+'</td>').join('')+'</tr>').join('');
+    const headerCells=headers.map((h,i)=>'<th style="padding:4px;white-space:nowrap">'+String.fromCharCode(65+i)+': '+escDebug(h)+'</th>').join('');
+    content.innerHTML='<div style="font-size:12px;color:#e0a060;padding:8px 0 12px">The sheet loaded, but no Pokémon names were found in the expected Pokémon column. The live CSV data below will show which columns the tracker is actually receiving.</div><div style="overflow:auto;max-width:100%"><table class="data-table" style="font-size:10px"><thead><tr><th>Row</th>'+headerCells+'</tr></thead><tbody>'+sample+'</tbody></table></div>';
+    return;
+  }
 
   const sortValue=(mon,key)=>{
     if(key==='attempt') return mon.attempt??Number.MAX_SAFE_INTEGER;
