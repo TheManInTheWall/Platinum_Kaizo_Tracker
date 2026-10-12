@@ -486,6 +486,7 @@ body{font-family:system-ui,sans-serif;background:#161616;color:#ddd;height:100vh
     <div class="navtab active" id="teamSubtab-fulllist" onclick="setTeamView('fulllist')" style="font-size:11px;padding:6px 16px">Full List</div>
     <div class="navtab" id="teamSubtab-fallen" onclick="setTeamView('fallen')" style="font-size:11px;padding:6px 16px">Fallen</div>
     <div class="navtab" id="teamSubtab-ivbyattempt" onclick="setTeamView('ivbyattempt')" style="font-size:11px;padding:6px 16px">IVs by Attempt</div>
+    <div class="navtab" id="teamSubtab-individuals" onclick="setTeamView('individuals')" style="font-size:11px;padding:6px 16px">Individual Pokémon</div>
     <div class="navtab" id="teamSubtab-breakdown" onclick="setTeamView('breakdown')" style="font-size:11px;padding:6px 16px">Breakdown</div>
     <div class="navtab" id="teamSubtab-species" onclick="setTeamView('species')" style="font-size:11px;padding:6px 16px">Species History</div>
     <div class="navtab" id="teamSubtab-catchlog" onclick="setTeamView('catchlog')" style="font-size:11px;padding:6px 16px">Catch Log</div>
@@ -2852,11 +2853,13 @@ function parseCSV(text){
   return rows;
 }
 
-let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'stats'
+let teamView='fulllist'; // 'fulllist' | 'fallen' | 'ivbyattempt' | 'individuals' | 'stats'
+let individualMonSortKey='attempt';
+let individualMonSortDir='asc';
 
 function setTeamView(view){
   teamView=view;
-  ['fulllist','fallen','ivbyattempt','breakdown','species','catchlog','stats'].forEach(v=>{
+  ['fulllist','fallen','ivbyattempt','individuals','breakdown','species','catchlog','stats'].forEach(v=>{
     document.getElementById(`teamSubtab-${v}`)?.classList.toggle('active',v===view);
   });
 
@@ -2931,6 +2934,7 @@ async function loadTeamDatasetSilently(ds){
 
 function renderTeamComputedView(){
   if(teamView==='ivbyattempt') renderIVsByAttempt();
+  else if(teamView==='individuals') renderIndividualMons();
   else if(teamView==='breakdown') renderBreakdownView();
   else if(teamView==='species') renderSpeciesHistoryView();
   else if(teamView==='catchlog') renderCatchLogView();
@@ -3442,6 +3446,116 @@ function renderTeamTable(){
       </summary>
       <div style="margin-top:4px">${earlierHtml}</div>
     </details>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+ // INDIVIDUAL POKÉMON — one sortable row per entry in the Full List sheet
+function setIndividualMonSort(key){
+  if(individualMonSortKey===key){
+    individualMonSortDir=individualMonSortDir==='asc'?'desc':'asc';
+  }else{
+    individualMonSortKey=key;
+    individualMonSortDir=(key==='name'||key==='nature'||key==='location'||key==='attempt')?'asc':'desc';
+  }
+  renderIndividualMons();
+}
+
+function renderIndividualMons(){
+  const content=document.getElementById('teamContent');
+  if(!content) return;
+  const ds=TEAM_DATASETS.fulllist;
+  if(!ds.cache){
+    content.innerHTML='<div style="color:#444;font-size:12px;padding:20px">Full List data not loaded.</div>';
+    return;
+  }
+
+  const headers=ds.headers||[];
+  const ivIdxs=findIVColumnIndices(headers);
+  if(ivIdxs.some(i=>i<0)){
+    content.innerHTML='<div style="color:#e05555;font-size:12px;padding:20px">Could not find all six IV columns (HP, ATK, DEF, SPA, SPD, SPE) in the Full List headers.</div>';
+    return;
+  }
+
+  const nameIdx=findPokemonNameIdx(headers,4);
+  const natureIdx=findHeaderIdx(headers,'NATURE');
+  const locationIdx=findHeaderIdx(headers,'MET LOCATION');
+  const rows=ds.cache.filter(r=>ds.groupKeyValid(r[0]||'') && String(r[nameIdx]||'').trim()!=='')
+    .map((r,index)=>{
+      const stats={};
+      IV_STAT_NAMES.forEach((stat,i)=>{
+        const raw=String(r[ivIdxs[i]]??'').trim();
+        const parsed=raw===''?null:Number(raw);
+        stats[stat]=Number.isFinite(parsed)?parsed:null;
+      });
+      const sum=IV_STAT_NAMES.reduce((total,stat)=>total+(stats[stat]??0),0);
+      const hpValues=IV_STAT_NAMES.map(stat=>stats[stat]??0);
+      const hp=hiddenPower(...hpValues);
+      return {
+        index,
+        attempt:ds.groupKeyNumber(r[0]),
+        attemptLabel:ds.formatGroupLabel(r[0]),
+        name:String(r[nameIdx]||'').trim(),
+        nature:natureIdx>=0?String(r[natureIdx]||'').trim():'',
+        location:locationIdx>=0?String(r[locationIdx]||'').trim():'',
+        stats,sum,hpType:hp.type,hpPower:hp.power
+      };
+    });
+
+  const sortValue=(mon,key)=>{
+    if(key==='attempt') return mon.attempt??Number.MAX_SAFE_INTEGER;
+    if(key==='name') return mon.name.toLocaleLowerCase();
+    if(key==='nature') return mon.nature.toLocaleLowerCase();
+    if(key==='location') return mon.location.toLocaleLowerCase();
+    if(key==='sum') return mon.sum;
+    if(key==='hpType') return mon.hpType;
+    if(key==='hpPower') return mon.hpPower;
+    if(IV_STAT_NAMES.includes(key)) return mon.stats[key];
+    return '';
+  };
+  const sorted=[...rows].sort((a,b)=>{
+    const av=sortValue(a,individualMonSortKey), bv=sortValue(b,individualMonSortKey);
+    let diff;
+    if(av===null||av===undefined||av==='') diff=(bv===null||bv===undefined||bv==='')?0:1;
+    else if(bv===null||bv===undefined||bv==='') diff=-1;
+    else if(typeof av==='number'&&typeof bv==='number') diff=av-bv;
+    else diff=String(av).localeCompare(String(bv),undefined,{numeric:true,sensitivity:'base'});
+    return individualMonSortDir==='asc'?diff:-diff;
+  });
+
+  const esc=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const columns=[
+    ['attempt','Attempt'],['name','Pokémon'],['nature','Nature'],
+    ['HP','HP'],['ATK','Atk'],['DEF','Def'],['SPA','Sp. Atk'],['SPD','Sp. Def'],['SPE','Speed'],
+    ['sum','Total IV'],['hpType','Hidden Power'],['hpPower','HP Power'],['location','Met Location']
+  ];
+  const heading=([key,label])=>{
+    const active=individualMonSortKey===key;
+    const arrow=active?(individualMonSortDir==='asc'?' ▲':' ▼'):'';
+    return '<th style="position:sticky;top:0;background:#0e0e0e;white-space:nowrap;cursor:pointer;user-select:none" onclick="setIndividualMonSort(\''+key+'\')" title="Sort by '+label+'">'+label+arrow+'</th>';
+  };
+  const body=sorted.map(mon=>{
+    const ivCells=IV_STAT_NAMES.map(stat=>{
+      const value=mon.stats[stat];
+      const color=value===31?'#7fd97f':value===0?'#e05555':'#bbb';
+      return '<td style="text-align:center;color:'+color+'">'+(value===null?'—':value)+'</td>';
+    }).join('');
+    return '<tr>'+
+      '<td style="white-space:nowrap;color:#8fc6ff">'+esc(mon.attemptLabel)+'</td>'+
+      '<td style="white-space:nowrap;font-weight:500">'+esc(displaySpecies(normalizeSpecies(mon.name)))+'</td>'+
+      '<td style="white-space:nowrap">'+esc(mon.nature||'—')+'</td>'+
+      ivCells+
+      '<td style="text-align:center;color:#edc948;font-weight:600">'+mon.sum+'</td>'+
+      '<td style="white-space:nowrap;color:#af7aa1">'+esc(mon.hpType)+'</td>'+
+      '<td style="text-align:center">'+mon.hpPower+'</td>'+
+      '<td style="white-space:nowrap;color:#888">'+esc(mon.location||'—')+'</td>'+
+      '</tr>';
+  }).join('');
+
+  content.innerHTML=
+    '<div style="font-size:11px;color:#666;margin:4px 0 10px">'+rows.length+' individual Pokémon. Click any column heading to sort; click it again to reverse the order. Green IVs are 31, red IVs are 0.</div>'+
+    '<div style="overflow:auto;max-height:100%"><table class="data-table" style="font-size:10.5px;min-width:950px">'+
+    '<thead><tr>'+columns.map(heading).join('')+'</tr></thead>'+
+    '<tbody>'+(body||'<tr><td colspan="'+columns.length+'" style="color:#444;padding:20px">No Pokémon found in the Full List sheet.</td></tr>')+'</tbody></table></div>';
 }
 
 // ─────────────────────────────────────────────────────────────────
