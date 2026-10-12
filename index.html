@@ -3476,10 +3476,17 @@ function renderIndividualMons(){
     return;
   }
 
-  const nameIdx=findPokemonNameIdx(headers,4);
+  // Match the supplied sheet's real headers: ATTEMPT, MET LOCATION, POKEMON,
+  // NATURE, HP, ATK, DEF, SPA, SPD, SPE, NOTES.
+  // POKEMON is column C (index 2); do not use the old Full List fallback index.
+  const nameHeaderIdx=findHeaderIdx(headers,'POKEMON');
+  const nameIdx=nameHeaderIdx>=0?nameHeaderIdx:2;
   const natureIdx=findHeaderIdx(headers,'NATURE');
   const locationIdx=findHeaderIdx(headers,'MET LOCATION');
-  const rows=ds.cache.filter(r=>ds.groupKeyValid(r[0]||'') && String(r[nameIdx]||'').trim()!=='')
+  // Attempt cells are merged in Sheets. The loader forward-fills column A,
+  // so include every row with a Pokémon name rather than rejecting rows by
+  // re-validating the attempt label.
+  const rows=ds.cache.filter(r=>String(r[nameIdx]||'').trim()!=='')
     .map((r,index)=>{
       const stats={};
       IV_STAT_NAMES.forEach((stat,i)=>{
@@ -3493,7 +3500,7 @@ function renderIndividualMons(){
       return {
         index,
         attempt:ds.groupKeyNumber(r[0]),
-        attemptLabel:ds.formatGroupLabel(r[0]),
+        attemptLabel:ds.groupKeyValid(r[0]||'')?ds.formatGroupLabel(r[0]):String(r[0]||'').trim(),
         name:String(r[nameIdx]||'').trim(),
         nature:natureIdx>=0?String(r[natureIdx]||'').trim():'',
         location:locationIdx>=0?String(r[locationIdx]||'').trim():'',
