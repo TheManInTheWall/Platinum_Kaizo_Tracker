@@ -19733,9 +19733,9 @@
     {
       "id": 47,
       "label": "Attempt 47",
-      "ended": false,
-      "endedAtIndex": null,
-      "currentIndex": 145,
+      "ended": true,
+      "endedAtIndex": 146,
+      "currentIndex": 146,
       "deaths": [
         0,
         0,
@@ -20180,7 +20180,8 @@
         113,
         120,
         121
-      ]
+      ],
+      "partyAtEnd": 6
     }
   ],
   "nextId": 48,
